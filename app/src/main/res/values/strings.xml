@@ -27,6 +27,11 @@
     <string name="desktop_rows">Desktop rows</string>
     <string name="dock_icons">Dock icons</string>
     <string name="show_clock">Show clock</string>
+    <string name="double_tap">Double-tap on home</string>
+    <string name="dt_none">Do nothing</string>
+    <string name="dt_drawer">Open app drawer</string>
+    <string name="dt_notifications">Open notifications</string>
+    <string name="dt_settings">Open launcher settings</string>
     <string name="section_drawer">App drawer</string>
     <string name="drawer_cols">Drawer columns</string>
     <string name="section_icons">Icons</string>
@@ -34,6 +39,12 @@
     <string name="show_labels">Show app names</string>
     <string name="icon_pack">Icon pack</string>
     <string name="system_icons">System icons</string>
+    <string name="icon_shape">Icon shape</string>
+    <string name="shape_system">Default</string>
+    <string name="shape_circle">Circle</string>
+    <string name="shape_squircle">Squircle</string>
+    <string name="shape_rounded">Rounded square</string>
+    <string name="shape_teardrop">Teardrop</string>
     <string name="section_backup">Backup</string>
     <string name="import_nova">Import Nova Launcher backup</string>
     <string name="import_nova_confirm">This replaces your current home screen layout with the one in the .novabackup file. Continue?</string>
