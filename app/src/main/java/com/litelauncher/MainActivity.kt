@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.app.Dialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
+import android.content.ComponentCallbacks2
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -204,7 +205,7 @@ class MainActivity : Activity() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_BACKGROUND) icons.clear()
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) icons.clear()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -331,6 +332,7 @@ class MainActivity : Activity() {
     private fun setupHomeGestures() {
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
+
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 if (e1 == null) return false
                 val dy = e2.y - e1.y
@@ -340,6 +342,23 @@ class MainActivity : Activity() {
                     return true
                 }
                 return false
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                val action = prefs.doubleTap
+                if (action == 0) return false
+                // Only empty space counts, so double-tapping an icon never triggers this.
+                val page = snap.findSnapView(pager.layoutManager) as? CellLayout
+                if (page != null) {
+                    val cell = page.cellAt(e.x - page.left, e.y - page.top)
+                    if (model.at(HomeItem.DESKTOP, currentPage(), cell.first, cell.second) != null) return false
+                }
+                when (action) {
+                    1 -> openDrawer()
+                    2 -> expandNotifications()
+                    3 -> startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                }
+                return true
             }
         })
         // Observe touches without ever stealing them from the pager or the icons.
