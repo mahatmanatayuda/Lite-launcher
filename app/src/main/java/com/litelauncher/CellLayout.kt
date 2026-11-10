@@ -11,7 +11,8 @@ class CellLayout @JvmOverloads constructor(
     var cols = 4
     var rows = 5
 
-    class LP(val cx: Int, val cy: Int) : ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+    class LP(val cx: Int, val cy: Int) :
+        ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
 
     override fun checkLayoutParams(p: ViewGroup.LayoutParams?) = p is LP
     override fun generateDefaultLayoutParams(): ViewGroup.LayoutParams = LP(0, 0)
