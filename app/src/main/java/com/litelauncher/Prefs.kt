@@ -34,6 +34,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("clock", true)
         set(v) = sp.edit().putBoolean("clock", v).apply()
 
+    /** One of IconShape.SYSTEM, CIRCLE, SQUIRCLE, ROUNDED, TEARDROP. */
+    var iconShape: Int
+        get() = sp.getInt("icon_shape", IconShape.SYSTEM)
+        set(v) = sp.edit().putInt("icon_shape", v).apply()
+
+    /** 0 = nothing, 1 = app drawer, 2 = notification panel, 3 = launcher settings. */
+    var doubleTap: Int
+        get() = sp.getInt("double_tap", 0)
+        set(v) = sp.edit().putInt("double_tap", v).apply()
+
     var hidden: Set<String>
         get() = HashSet(sp.getStringSet("hidden", emptySet()) ?: emptySet())
         set(v) = sp.edit().putStringSet("hidden", HashSet(v)).apply()
