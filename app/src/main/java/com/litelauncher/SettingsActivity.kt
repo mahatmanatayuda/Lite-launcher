@@ -41,6 +41,12 @@ class SettingsActivity : Activity() {
         addSeek(R.string.desktop_rows, 3, 8, { prefs.rows }, { prefs.rows = it })
         addSeek(R.string.dock_icons, 3, 7, { prefs.hotseat }, { prefs.hotseat = it })
         addSwitch(R.string.show_clock, prefs.showClock) { prefs.showClock = it }
+        addChoice(
+            R.string.double_tap,
+            intArrayOf(R.string.dt_none, R.string.dt_drawer, R.string.dt_notifications, R.string.dt_settings),
+            { prefs.doubleTap },
+            { prefs.doubleTap = it },
+        )
 
         addHeader(getString(R.string.section_drawer))
         addSeek(R.string.drawer_cols, 3, 6, { prefs.drawerCols }, { prefs.drawerCols = it })
@@ -48,6 +54,15 @@ class SettingsActivity : Activity() {
         addHeader(getString(R.string.section_icons))
         addSeek(R.string.icon_size, 40, 72, { prefs.iconSizeDp }, { prefs.iconSizeDp = it }, " dp")
         addSwitch(R.string.show_labels, prefs.showLabels) { prefs.showLabels = it }
+        addChoice(
+            R.string.icon_shape,
+            intArrayOf(
+                R.string.shape_system, R.string.shape_circle, R.string.shape_squircle,
+                R.string.shape_rounded, R.string.shape_teardrop,
+            ),
+            { prefs.iconShape },
+            { prefs.iconShape = it },
+        )
         packButton = addButton("") { choosePack() }
         updatePackButton()
 
@@ -210,6 +225,24 @@ class SettingsActivity : Activity() {
             setPadding(0, dp(12), 0, dp(12))
             setOnCheckedChangeListener { _, c -> onChange(c) }
         })
+    }
+
+    /** A button that shows "Label: current option" and opens a list of options. */
+    private fun addChoice(label: Int, options: IntArray, get: () -> Int, set: (Int) -> Unit) {
+        val button = Button(this)
+        fun refresh() {
+            button.text = getString(label) + ": " + getString(options[get().coerceIn(0, options.size - 1)])
+        }
+        button.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setItems(Array(options.size) { getString(options[it]) }) { _, i ->
+                    set(i)
+                    refresh()
+                }
+                .show()
+        }
+        refresh()
+        content.addView(button)
     }
 
     private fun addButton(text: String, onClick: () -> Unit): Button {
