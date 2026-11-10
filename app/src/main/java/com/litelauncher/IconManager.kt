@@ -5,6 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
@@ -15,7 +19,7 @@ import java.util.concurrent.Executors
 
 /**
  * Loads icons off the main thread. Order: per-app custom icon, active icon pack, system icon.
- * Bitmap cache is capped at 8 MB.
+ * Adaptive icons can be masked with a chosen shape. Bitmap cache is capped at 8 MB.
  */
 class IconManager(ctx: Context) {
     private val pm = ctx.applicationContext.packageManager
@@ -29,6 +33,7 @@ class IconManager(ctx: Context) {
 
     @Volatile private var overrides: Map<String, String> = emptyMap()
     @Volatile private var activePack: IconPack? = null
+    @Volatile private var shape: Int = IconShape.SYSTEM
     @Volatile private var version = 0
     private var sig = "?"
 
@@ -38,11 +43,13 @@ class IconManager(ctx: Context) {
     fun reloadConfig(): Boolean {
         val ov = prefs.iconOverrides()
         val p = prefs.iconPack
-        val s = (p ?: "") + "#" + ov.toSortedMap().toString()
+        val sh = prefs.iconShape
+        val s = (p ?: "") + "#" + sh + "#" + ov.toSortedMap().toString()
         if (s == sig) return false
         sig = s
         overrides = ov
         activePack = p?.let { packFor(it) }
+        shape = sh
         version++
         cache.evictAll()
         return true
@@ -77,9 +84,10 @@ class IconManager(ctx: Context) {
         val key = "$comp@$sizePx@$version"
         cache.get(key)?.let { cb(it); return }
         val ver = version
+        val sh = shape
         executor.execute {
             val d = resolve(component, comp) ?: return@execute
-            val bmp = render(d, sizePx)
+            val bmp = render(d, sizePx, sh)
             if (ver == version) cache.put(key, bmp)
             main.post { cb(bmp) }
         }
@@ -92,7 +100,7 @@ class IconManager(ctx: Context) {
             val p = packFor(pkg)
             p.load(pm)
             val d = p.drawable(name) ?: return@execute
-            val bmp = render(d, sizePx)
+            val bmp = render(d, sizePx, IconShape.SYSTEM)
             cache.put(key, bmp)
             main.post { cb(bmp) }
         }
@@ -114,10 +122,23 @@ class IconManager(ctx: Context) {
         return try { pm.getActivityIcon(component) } catch (e: Exception) { null }
     }
 
-    private fun render(d: Drawable, size: Int): Bitmap {
+    private fun render(d: Drawable, size: Int, shape: Int): Bitmap {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        d.setBounds(0, 0, size, size)
-        d.draw(Canvas(bmp))
+        val canvas = Canvas(bmp)
+        if (shape != IconShape.SYSTEM && d is AdaptiveIconDrawable) {
+            // Draw both layers (they extend 25% past each edge), then cut them to the chosen shape.
+            val off = (size * 0.25f).toInt()
+            val layer = canvas.saveLayer(0f, 0f, size.toFloat(), size.toFloat(), null)
+            d.background?.let { it.setBounds(-off, -off, size + off, size + off); it.draw(canvas) }
+            d.foreground?.let { it.setBounds(-off, -off, size + off, size + off); it.draw(canvas) }
+            val mask = Paint(Paint.ANTI_ALIAS_FLAG)
+            mask.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+            canvas.drawPath(IconShape.path(shape, size.toFloat()), mask)
+            canvas.restoreToCount(layer)
+        } else {
+            d.setBounds(0, 0, size, size)
+            d.draw(canvas)
+        }
         return bmp
     }
 
