@@ -27,6 +27,11 @@
     <string name="desktop_rows">Baris desktop</string>
     <string name="dock_icons">Jumlah ikon dock</string>
     <string name="show_clock">Tampilkan jam</string>
+    <string name="double_tap">Ketuk dua kali di home</string>
+    <string name="dt_none">Tidak melakukan apa-apa</string>
+    <string name="dt_drawer">Buka app drawer</string>
+    <string name="dt_notifications">Buka notifikasi</string>
+    <string name="dt_settings">Buka pengaturan launcher</string>
     <string name="section_drawer">App drawer</string>
     <string name="drawer_cols">Kolom drawer</string>
     <string name="section_icons">Ikon</string>
@@ -34,6 +39,12 @@
     <string name="show_labels">Tampilkan nama aplikasi</string>
     <string name="icon_pack">Icon pack</string>
     <string name="system_icons">Ikon sistem</string>
+    <string name="icon_shape">Bentuk ikon</string>
+    <string name="shape_system">Bawaan</string>
+    <string name="shape_circle">Lingkaran</string>
+    <string name="shape_squircle">Squircle</string>
+    <string name="shape_rounded">Persegi membulat</string>
+    <string name="shape_teardrop">Tetesan</string>
     <string name="section_backup">Backup</string>
     <string name="import_nova">Impor backup Nova Launcher</string>
     <string name="import_nova_confirm">Tata letak home saat ini akan diganti dengan yang ada di file .novabackup. Lanjutkan?</string>
