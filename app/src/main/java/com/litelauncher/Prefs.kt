@@ -1,6 +1,7 @@
 package com.litelauncher
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 
 class Prefs(context: Context) {
@@ -34,6 +35,30 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("clock", true)
         set(v) = sp.edit().putBoolean("clock", v).apply()
 
+    var lockDesktop: Boolean
+        get() = sp.getBoolean("lock_desktop", false)
+        set(v) = sp.edit().putBoolean("lock_desktop", v).apply()
+
+    var notifBadges: Boolean
+        get() = sp.getBoolean("notif_badges", false)
+        set(v) = sp.edit().putBoolean("notif_badges", v).apply()
+
+    var iconShape: String
+        get() = sp.getString("icon_shape", "system") ?: "system"
+        set(v) = sp.edit().putString("icon_shape", v).apply()
+
+    var swipeUp: String
+        get() = sp.getString("swipe_up", "drawer") ?: "drawer"
+        set(v) = sp.edit().putString("swipe_up", v).apply()
+
+    var swipeDown: String
+        get() = sp.getString("swipe_down", "notifications") ?: "notifications"
+        set(v) = sp.edit().putString("swipe_down", v).apply()
+
+    var doubleTap: String
+        get() = sp.getString("double_tap", "none") ?: "none"
+        set(v) = sp.edit().putString("double_tap", v).apply()
+
     var hidden: Set<String>
         get() = HashSet(sp.getStringSet("hidden", emptySet()) ?: emptySet())
         set(v) = sp.edit().putStringSet("hidden", HashSet(v)).apply()
@@ -56,5 +81,33 @@ class Prefs(context: Context) {
         val o = try { JSONObject(sp.getString("icon_overrides", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
         if (value == null) o.remove(component) else o.put(component, value)
         sp.edit().putString("icon_overrides", o.toString()).apply()
+    }
+
+    /** Every setting as JSON, for backups. */
+    fun toJson(): JSONObject {
+        val o = JSONObject()
+        for ((k, v) in sp.all) {
+            when (v) {
+                is Set<*> -> o.put(k, JSONArray(v.map { it.toString() }))
+                is Boolean, is Int, is Long, is Float, is String -> o.put(k, v)
+            }
+        }
+        return o
+    }
+
+    /** Replace every setting with the contents of a backup. */
+    fun fromJson(o: JSONObject) {
+        val e = sp.edit().clear()
+        for (k in o.keys()) {
+            when (val v = o.get(k)) {
+                is Boolean -> e.putBoolean(k, v)
+                is Int -> e.putInt(k, v)
+                is Long -> e.putLong(k, v)
+                is Double -> e.putFloat(k, v.toFloat())
+                is String -> e.putString(k, v)
+                is JSONArray -> e.putStringSet(k, (0 until v.length()).map { v.getString(it) }.toSet())
+            }
+        }
+        e.apply()
     }
 }
