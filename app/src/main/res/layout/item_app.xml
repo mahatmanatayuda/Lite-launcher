@@ -8,17 +8,30 @@
     android:paddingTop="6dp"
     android:paddingBottom="6dp">
 
-    <ImageView
-        android:id="@+id/icon"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
-        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content">
 
-    <com.litelauncher.FolderIconView
-        android:id="@+id/folder_icon"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
-        android:visibility="gone" />
+        <ImageView
+            android:id="@+id/icon"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:importantForAccessibility="no" />
+
+        <com.litelauncher.FolderIconView
+            android:id="@+id/folder_icon"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:visibility="gone" />
+
+        <View
+            android:id="@+id/badge"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_gravity="top|end"
+            android:background="@drawable/bg_badge"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/label"
