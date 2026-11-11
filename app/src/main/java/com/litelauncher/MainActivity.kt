@@ -11,6 +11,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -29,6 +32,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.GridLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
@@ -38,6 +42,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
+import java.io.File
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
@@ -66,8 +71,14 @@ class MainActivity : Activity() {
     private lateinit var drawer: View
     private lateinit var grid: RecyclerView
     private lateinit var search: EditText
+    private lateinit var groupScroll: HorizontalScrollView
+    private lateinit var groupBar: LinearLayout
 
     private var allApps: List<AppInfo> = emptyList()
+    private var customLabels: Map<String, String> = emptyMap()
+    private var groups: Map<String, List<String>> = emptyMap()
+    private var currentGroup: String? = null
+    private var pendingIcon: ComponentName? = null
     private var drawerOpen = false
     private var dragging = false
     private var openFolderId: Long? = null
@@ -171,6 +182,7 @@ class MainActivity : Activity() {
         grid.adapter = drawerAdapter
         grid.itemAnimator = null
         setupDrawer()
+        setupGroupBar()
 
         // Folder panel
         folderPanel.setOnClickListener { closeFolder() }
@@ -191,6 +203,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         icons.reloadConfig()
+        customLabels = prefs.customLabels()
+        groups = prefs.groups()
         model = HomeModel.load(this)
         applyGridPrefs()
         if (model.normalize()) model.save(this)
@@ -205,6 +219,7 @@ class MainActivity : Activity() {
             pager.removeCallbacks(badgeRun)
             pager.postDelayed(badgeRun, 300)
         }
+        rebuildGroupBar()
         applyFilter()
         refreshHome()
     }
@@ -242,11 +257,26 @@ class MainActivity : Activity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_IMAGE && resultCode == RESULT_OK) {
+            val uri = data?.data
+            val target = pendingIcon
+            pendingIcon = null
+            if (uri != null && target != null) saveCustomIcon(target, uri)
+        }
+    }
+
     private fun applyGridPrefs() {
         model.cols = prefs.cols
         model.rows = prefs.rows
         model.hotseat = prefs.hotseat
     }
+
+    /** Name shown for an app: the user's custom name if there is one. */
+    private fun labelOf(flat: String?, fallback: String): String =
+        flat?.let { customLabels[it] } ?: fallback
 
     // ---------- Home pager ----------
 
@@ -298,7 +328,7 @@ class MainActivity : Activity() {
         val folderIcon = v.findViewById<FolderIconView>(R.id.folder_icon)
         val label = v.findViewById<TextView>(R.id.label)
         val badge = v.findViewById<View>(R.id.badge)
-        label.text = item.title
+        label.text = if (item.type == HomeItem.TYPE_APP) labelOf(item.component, item.title) else item.title
         label.visibility = if (labels) View.VISIBLE else View.GONE
         val hasDot = if (item.type == HomeItem.TYPE_APP) {
             NotifState.has(comp(item.component)?.packageName)
@@ -561,7 +591,7 @@ class MainActivity : Activity() {
             actions += { comp(item.component)?.let { uninstall(it.packageName) } }
         }
         AlertDialog.Builder(this)
-            .setTitle(item.title)
+            .setTitle(if (item.type == HomeItem.TYPE_APP) labelOf(item.component, item.title) else item.title)
             .setItems(labels.toTypedArray()) { _, i -> actions[i]() }
             .show()
     }
@@ -579,7 +609,7 @@ class MainActivity : Activity() {
             val icon = v.findViewById<ImageView>(R.id.icon)
             comp(child.component)?.let { bindIcon(icon, it, size, icons) }
             val label = v.findViewById<TextView>(R.id.label)
-            label.text = child.title
+            label.text = labelOf(child.component, child.title)
             val badge = v.findViewById<View>(R.id.badge)
             badge.visibility =
                 if (prefs.notifBadges && NotifState.has(comp(child.component)?.packageName)) View.VISIBLE else View.GONE
@@ -690,9 +720,11 @@ class MainActivity : Activity() {
         val menu = PopupMenu(this, anchor)
         menu.menu.add(0, 1, 0, R.string.add_to_home)
         menu.menu.add(0, 2, 1, R.string.edit_icon)
-        menu.menu.add(0, 3, 2, R.string.hide)
-        menu.menu.add(0, 4, 3, R.string.app_info)
-        menu.menu.add(0, 5, 4, R.string.uninstall)
+        menu.menu.add(0, 6, 2, R.string.add_to_group)
+        if (currentGroup != null) menu.menu.add(0, 7, 3, R.string.remove_from_group)
+        menu.menu.add(0, 3, 4, R.string.hide)
+        menu.menu.add(0, 4, 5, R.string.app_info)
+        menu.menu.add(0, 5, 6, R.string.uninstall)
         menu.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> {
@@ -711,10 +743,129 @@ class MainActivity : Activity() {
                 }
                 4 -> openAppInfo(app.packageName)
                 5 -> uninstall(app.packageName)
+                6 -> addToGroup(app)
+                7 -> removeFromGroup(app)
             }
             true
         }
         menu.show()
+    }
+
+    // ---------- Drawer groups ----------
+
+    private fun setupGroupBar() {
+        groupBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(12), 0, dp(12), dp(8))
+        }
+        groupScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+            addView(groupBar)
+        }
+        // Drawer children are: handle, search, grid. Put the group chips between search and grid.
+        (drawer as LinearLayout).addView(
+            groupScroll, 2,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        )
+    }
+
+    private fun rebuildGroupBar() {
+        groupBar.removeAllViews()
+        if (groups.isEmpty()) {
+            groupScroll.visibility = View.GONE
+            currentGroup = null
+            return
+        }
+        groupScroll.visibility = View.VISIBLE
+        if (currentGroup != null && !groups.containsKey(currentGroup)) currentGroup = null
+        addChip(getString(R.string.group_all), null)
+        for (name in groups.keys) addChip(name, name)
+    }
+
+    private fun addChip(text: String, group: String?) {
+        val selected = currentGroup == group
+        val chip = TextView(this).apply {
+            this.text = text
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(if (selected) 0xFF5B6CFF.toInt() else 0x22FFFFFF)
+            }
+            setOnClickListener {
+                currentGroup = group
+                rebuildGroupBar()
+                applyFilter()
+            }
+            if (group != null) setOnLongClickListener { confirmDeleteGroup(group); true }
+        }
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lp.setMargins(dp(4), 0, dp(4), 0)
+        groupBar.addView(chip, lp)
+    }
+
+    private fun addToGroup(app: AppInfo) {
+        val names = groups.keys.toList()
+        val items = (names + getString(R.string.group_new)).toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.add_to_group)
+            .setItems(items) { _, i ->
+                if (i < names.size) putInGroup(names[i], app) else promptNewGroup(app)
+            }
+            .show()
+    }
+
+    private fun promptNewGroup(app: AppInfo) {
+        val input = EditText(this).apply {
+            setSingleLine()
+            hint = getString(R.string.group_name)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.group_new)
+            .setView(input)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val n = input.text.toString().trim()
+                if (n.isNotEmpty()) putInGroup(n, app)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun putInGroup(name: String, app: AppInfo) {
+        val m = LinkedHashMap(groups)
+        val flat = app.component.flattenToString()
+        val current = m[name] ?: emptyList()
+        m[name] = if (flat in current) current else current + flat
+        saveGroups(m)
+    }
+
+    private fun removeFromGroup(app: AppInfo) {
+        val g = currentGroup ?: return
+        val m = LinkedHashMap(groups)
+        m[g] = (m[g] ?: emptyList()) - app.component.flattenToString()
+        saveGroups(m)
+    }
+
+    private fun confirmDeleteGroup(name: String) {
+        AlertDialog.Builder(this)
+            .setMessage(getString(R.string.group_delete_confirm, name))
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val m = LinkedHashMap(groups)
+                m.remove(name)
+                if (currentGroup == name) currentGroup = null
+                saveGroups(m)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun saveGroups(m: Map<String, List<String>>) {
+        prefs.setGroups(m)
+        groups = prefs.groups()
+        rebuildGroupBar()
+        applyFilter()
     }
 
     // ---------- Apps ----------
@@ -742,8 +893,13 @@ class MainActivity : Activity() {
     private fun applyFilter() {
         val hidden = prefs.hidden
         val q = search.text.toString().trim().lowercase()
-        val list = allApps.filter { it.packageName !in hidden }
-            .let { l -> if (q.isEmpty()) l else l.filter { it.label.lowercase().contains(q) } }
+        val members = currentGroup?.let { groups[it] }?.toSet()
+        val list = allApps
+            .map { a -> customLabels[a.component.flattenToString()]?.let { a.copy(label = it) } ?: a }
+            .filter { it.packageName !in hidden }
+            .filter { members == null || it.component.flattenToString() in members }
+            .filter { q.isEmpty() || it.label.lowercase().contains(q) }
+            .sortedBy { it.label.lowercase() }
         drawerAdapter.submit(list)
     }
 
@@ -769,28 +925,110 @@ class MainActivity : Activity() {
 
     private fun uninstall(pkg: String) = startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg")))
 
-    // ---------- Icon editing ----------
+    // ---------- Icon and name editing ----------
 
     private fun editIcon(component: ComponentName) {
-        val flat = component.flattenToString()
-        val options = arrayOf(getString(R.string.choose_from_pack), getString(R.string.reset_icon))
+        val options = arrayOf(
+            getString(R.string.choose_from_pack),
+            getString(R.string.choose_image),
+            getString(R.string.rename),
+            getString(R.string.reset_custom),
+        )
         AlertDialog.Builder(this)
             .setItems(options) { _, which ->
-                if (which == 1) {
-                    prefs.setIconOverride(flat, null)
-                    refreshAllIcons()
-                } else {
-                    val packs = icons.listPacks()
-                    when {
-                        packs.isEmpty() -> Toast.makeText(this, R.string.no_icon_packs, Toast.LENGTH_LONG).show()
-                        packs.size == 1 -> openPicker(component, packs[0])
-                        else -> AlertDialog.Builder(this)
-                            .setItems(packs.map { it.label }.toTypedArray()) { _, i -> openPicker(component, packs[i]) }
-                            .show()
-                    }
+                when (which) {
+                    0 -> chooseFromPack(component)
+                    1 -> pickImage(component)
+                    2 -> renameApp(component)
+                    3 -> resetCustom(component)
                 }
             }
             .show()
+    }
+
+    private fun chooseFromPack(component: ComponentName) {
+        val packs = icons.listPacks()
+        when {
+            packs.isEmpty() -> Toast.makeText(this, R.string.no_icon_packs, Toast.LENGTH_LONG).show()
+            packs.size == 1 -> openPicker(component, packs[0])
+            else -> AlertDialog.Builder(this)
+                .setItems(packs.map { it.label }.toTypedArray()) { _, i -> openPicker(component, packs[i]) }
+                .show()
+        }
+    }
+
+    private fun pickImage(component: ComponentName) {
+        pendingIcon = component
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*")
+        startActivityForResult(i, REQ_IMAGE)
+    }
+
+    /** Crop the picked image to a square, shrink it, and store it as this app's icon. */
+    private fun saveCustomIcon(component: ComponentName, uri: Uri) {
+        worker.execute {
+            var ok = false
+            try {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                val src = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                if (src != null) {
+                    val side = minOf(src.width, src.height)
+                    val square = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+                    val scaled = Bitmap.createScaledBitmap(square, 192, 192, true)
+                    val dir = File(filesDir, "icons")
+                    dir.mkdirs()
+                    val flat = component.flattenToString()
+                    deleteCustomIconFile(flat)
+                    val name = "icon_" + System.currentTimeMillis() + ".png"
+                    File(dir, name).outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    prefs.setIconOverride(flat, "file|$name")
+                    ok = true
+                }
+            } catch (e: Exception) {
+                ok = false
+            }
+            runOnUiThread {
+                if (ok) refreshAllIcons() else Toast.makeText(this, R.string.image_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun deleteCustomIconFile(flat: String) {
+        val v = prefs.iconOverrides()[flat] ?: return
+        if (v.startsWith("file|")) File(filesDir, "icons/" + v.substring(5)).delete()
+    }
+
+    private fun renameApp(component: ComponentName) {
+        val flat = component.flattenToString()
+        val original = allApps.firstOrNull { it.component == component }?.label ?: component.packageName
+        val input = EditText(this).apply {
+            setSingleLine()
+            setText(labelOf(flat, original))
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.rename)
+            .setView(input)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val t = input.text.toString().trim()
+                prefs.setCustomLabel(flat, if (t.isEmpty() || t == original) null else t)
+                customLabels = prefs.customLabels()
+                refreshAllIcons()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun resetCustom(component: ComponentName) {
+        val flat = component.flattenToString()
+        deleteCustomIconFile(flat)
+        prefs.setIconOverride(flat, null)
+        prefs.setCustomLabel(flat, null)
+        customLabels = prefs.customLabels()
+        refreshAllIcons()
     }
 
     private fun openPicker(component: ComponentName, pack: IconPack) {
@@ -807,6 +1045,7 @@ class MainActivity : Activity() {
         val dlg = Dialog(this, android.R.style.Theme_DeviceDefault_NoActionBar)
         val sizePx = dp(48)
         val pickAdapter = IconPickAdapter(pack, icons, sizePx) { name ->
+            deleteCustomIconFile(component.flattenToString())
             prefs.setIconOverride(component.flattenToString(), pack.pkg + "|" + name)
             dlg.dismiss()
             refreshAllIcons()
@@ -837,12 +1076,13 @@ class MainActivity : Activity() {
     private fun refreshAllIcons() {
         icons.reloadConfig()
         refreshHome()
-        drawerAdapter.notifyDataSetChanged()
+        applyFilter()
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     companion object {
         private const val MAX_PAGES = 9
+        private const val REQ_IMAGE = 51
     }
 }
