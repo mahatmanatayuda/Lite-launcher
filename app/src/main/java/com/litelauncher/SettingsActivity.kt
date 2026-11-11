@@ -22,6 +22,11 @@ class SettingsActivity : Activity() {
     private lateinit var icons: IconManager
     private lateinit var content: LinearLayout
     private lateinit var packButton: Button
+    private lateinit var shapeButton: Button
+    private lateinit var doubleTapButton: Button
+
+    private val shapeValues = listOf("system", "circle", "squircle", "rounded")
+    private val tapValues = listOf("none", "drawer", "notifications", "settings")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +55,12 @@ class SettingsActivity : Activity() {
         addSwitch(R.string.show_labels, prefs.showLabels) { prefs.showLabels = it }
         packButton = addButton("") { choosePack() }
         updatePackButton()
+        shapeButton = addButton("") { chooseShape() }
+        updateShapeButton()
+
+        addHeader(getString(R.string.section_gestures))
+        doubleTapButton = addButton("") { chooseDoubleTap() }
+        updateDoubleTapButton()
 
         addHeader(getString(R.string.section_backup))
         addButton(getString(R.string.import_nova)) { confirmImport() }
@@ -91,6 +102,52 @@ class SettingsActivity : Activity() {
             }
             .show()
         if (packs.isEmpty()) toast(R.string.no_icon_packs)
+    }
+
+    // ---------- Icon shape & gestures ----------
+
+    private fun shapeLabel(v: String) = getString(
+        when (v) {
+            "circle" -> R.string.shape_circle
+            "squircle" -> R.string.shape_squircle
+            "rounded" -> R.string.shape_rounded
+            else -> R.string.shape_system
+        }
+    )
+
+    private fun updateShapeButton() {
+        shapeButton.text = getString(R.string.icon_shape) + ": " + shapeLabel(prefs.iconShape)
+    }
+
+    private fun chooseShape() {
+        AlertDialog.Builder(this)
+            .setItems(shapeValues.map { shapeLabel(it) }.toTypedArray()) { _, i ->
+                prefs.iconShape = shapeValues[i]
+                updateShapeButton()
+            }
+            .show()
+    }
+
+    private fun tapLabel(v: String) = getString(
+        when (v) {
+            "drawer" -> R.string.action_drawer
+            "notifications" -> R.string.action_notifications
+            "settings" -> R.string.action_settings
+            else -> R.string.action_none
+        }
+    )
+
+    private fun updateDoubleTapButton() {
+        doubleTapButton.text = getString(R.string.double_tap) + ": " + tapLabel(prefs.doubleTap)
+    }
+
+    private fun chooseDoubleTap() {
+        AlertDialog.Builder(this)
+            .setItems(tapValues.map { tapLabel(it) }.toTypedArray()) { _, i ->
+                prefs.doubleTap = tapValues[i]
+                updateDoubleTapButton()
+            }
+            .show()
     }
 
     // ---------- Nova backup ----------
