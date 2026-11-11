@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="section_gestures">Gestur</string>
+    <string name="swipe_up">Geser ke atas di home</string>
+    <string name="swipe_down">Geser ke bawah di home</string>
+    <string name="double_tap">Ketuk dua kali di home</string>
+    <string name="action_none">Tidak melakukan apa-apa</string>
+    <string name="action_drawer">Buka app drawer</string>
+    <string name="action_notifications">Buka notifikasi</string>
+    <string name="action_settings">Buka pengaturan launcher</string>
+    <string name="icon_shape">Bentuk ikon</string>
+    <string name="shape_system">Bawaan sistem</string>
+    <string name="shape_circle">Lingkaran</string>
+    <string name="shape_squircle">Squircle</string>
+    <string name="shape_rounded">Persegi membulat</string>
+    <string name="lock_desktop">Kunci desktop (ikon tidak bisa dipindah)</string>
+    <string name="desktop_locked">Desktop sedang dikunci</string>
+    <string name="notif_dots">Titik notifikasi</string>
+    <string name="notif_dots_help">Izinkan Lite Launcher membaca notifikasi, lalu kembali ke sini</string>
+    <string name="backup_launcher">Backup launcher ke file</string>
+    <string name="restore_launcher">Pulihkan launcher dari file</string>
+    <string name="restore_confirm">Layar home dan semua pengaturan launcher saat ini akan diganti dengan isi backup. Lanjutkan?</string>
+    <string name="backup_done">Backup tersimpan</string>
+    <string name="restore_done">Backup dipulihkan</string>
+    <string name="backup_failed">Gagal.</string>
+</resources>
