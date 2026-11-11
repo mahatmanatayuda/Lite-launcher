@@ -16,6 +16,7 @@ class AppAdapter(
     private var items: List<AppInfo> = emptyList()
     var iconSizePx = 0
     var showLabels = true
+    var showBadges = false
 
     class VH(v: View) : RecyclerView.ViewHolder(v)
 
@@ -40,6 +41,8 @@ class AppAdapter(
         val label = v.findViewById<TextView>(R.id.label)
         label.text = app.label
         label.visibility = if (showLabels) View.VISIBLE else View.GONE
+        v.findViewById<View>(R.id.badge).visibility =
+            if (showBadges && NotifState.has(app.packageName)) View.VISIBLE else View.GONE
         bindIcon(icon, app.component, iconSizePx, icons)
         v.setOnClickListener { onClick(app) }
         v.setOnLongClickListener { onLong(v, app); true }
