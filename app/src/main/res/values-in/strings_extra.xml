@@ -23,4 +23,13 @@
     <string name="backup_done">Backup tersimpan</string>
     <string name="restore_done">Backup dipulihkan</string>
     <string name="backup_failed">Gagal.</string>
+    <string name="choose_image">Pilih gambar dari galeri</string>
+    <string name="reset_custom">Kembalikan ikon dan nama</string>
+    <string name="image_failed">Gambar itu tidak bisa dipakai</string>
+    <string name="group_all">Semua</string>
+    <string name="group_new">Grup baru…</string>
+    <string name="group_name">Nama grup</string>
+    <string name="add_to_group">Tambah ke grup</string>
+    <string name="remove_from_group">Keluarkan dari grup ini</string>
+    <string name="group_delete_confirm">Hapus grup %1$s? Aplikasinya tetap terpasang.</string>
 </resources>
