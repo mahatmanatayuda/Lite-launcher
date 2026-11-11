@@ -67,8 +67,43 @@ class Prefs(context: Context) {
         get() = sp.getString("icon_pack", null)?.takeIf { it.isNotEmpty() }
         set(v) = sp.edit().putString("icon_pack", v ?: "").apply()
 
-    fun iconOverrides(): Map<String, String> {
-        val s = sp.getString("icon_overrides", null) ?: return emptyMap()
+    // ---------- Per-app custom icon source ("pkg|drawable" or "file|name.png") ----------
+
+    fun iconOverrides(): Map<String, String> = readStringMap("icon_overrides")
+
+    fun setIconOverride(component: String, value: String?) = writeStringMapEntry("icon_overrides", component, value)
+
+    // ---------- Per-app custom names ----------
+
+    fun customLabels(): Map<String, String> = readStringMap("custom_labels")
+
+    fun setCustomLabel(component: String, value: String?) = writeStringMapEntry("custom_labels", component, value)
+
+    // ---------- Drawer groups (name -> list of flattened components) ----------
+
+    fun groups(): Map<String, List<String>> {
+        val s = sp.getString("groups", null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(s)
+            val out = LinkedHashMap<String, List<String>>()
+            for (k in o.keys()) {
+                val a = o.getJSONArray(k)
+                out[k] = (0 until a.length()).map { a.getString(it) }
+            }
+            out
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun setGroups(m: Map<String, List<String>>) {
+        val o = JSONObject()
+        for ((k, v) in m) o.put(k, JSONArray(v))
+        sp.edit().putString("groups", o.toString()).apply()
+    }
+
+    private fun readStringMap(key: String): Map<String, String> {
+        val s = sp.getString(key, null) ?: return emptyMap()
         return try {
             val o = JSONObject(s)
             o.keys().asSequence().associateWith { o.getString(it) }
@@ -77,10 +112,10 @@ class Prefs(context: Context) {
         }
     }
 
-    fun setIconOverride(component: String, value: String?) {
-        val o = try { JSONObject(sp.getString("icon_overrides", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
-        if (value == null) o.remove(component) else o.put(component, value)
-        sp.edit().putString("icon_overrides", o.toString()).apply()
+    private fun writeStringMapEntry(key: String, entry: String, value: String?) {
+        val o = try { JSONObject(sp.getString(key, "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+        if (value == null) o.remove(entry) else o.put(entry, value)
+        sp.edit().putString(key, o.toString()).apply()
     }
 
     /** Every setting as JSON, for backups. */
