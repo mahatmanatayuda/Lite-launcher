@@ -331,6 +331,17 @@ class MainActivity : Activity() {
     private fun setupHomeGestures() {
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                when (prefs.doubleTap) {
+                    "drawer" -> openDrawer()
+                    "notifications" -> expandNotifications()
+                    "settings" -> startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                    else -> return false
+                }
+                return true
+            }
+
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 if (e1 == null) return false
                 val dy = e2.y - e1.y
