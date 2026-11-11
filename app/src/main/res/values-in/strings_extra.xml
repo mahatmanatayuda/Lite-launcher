@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="section_gestures">Gestur</string>
+    <string name="double_tap">Ketuk dua kali di home</string>
+    <string name="action_none">Tidak melakukan apa-apa</string>
+    <string name="action_drawer">Buka app drawer</string>
+    <string name="action_notifications">Buka notifikasi</string>
+    <string name="action_settings">Buka pengaturan launcher</string>
+    <string name="icon_shape">Bentuk ikon</string>
+    <string name="shape_system">Bawaan sistem</string>
+    <string name="shape_circle">Lingkaran</string>
+    <string name="shape_squircle">Squircle</string>
+    <string name="shape_rounded">Persegi membulat</string>
+</resources>
