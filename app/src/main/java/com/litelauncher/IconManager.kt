@@ -5,6 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
@@ -38,7 +43,7 @@ class IconManager(ctx: Context) {
     fun reloadConfig(): Boolean {
         val ov = prefs.iconOverrides()
         val p = prefs.iconPack
-        val s = (p ?: "") + "#" + ov.toSortedMap().toString()
+        val s = (p ?: "") + "#" + ov.toSortedMap().toString() + "#" + prefs.iconShape
         if (s == sig) return false
         sig = s
         overrides = ov
@@ -115,10 +120,41 @@ class IconManager(ctx: Context) {
     }
 
     private fun render(d: Drawable, size: Int): Bitmap {
+        val shape = prefs.iconShape
+        if (shape != "system" && d is AdaptiveIconDrawable) {
+            renderShaped(d, size, shape)?.let { return it }
+        }
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         d.setBounds(0, 0, size, size)
         d.draw(Canvas(bmp))
         return bmp
+    }
+
+    /** Re-mask an adaptive icon with our own shape (circle / squircle / rounded square). */
+    private fun renderShaped(d: AdaptiveIconDrawable, size: Int, shape: String): Bitmap? {
+        val layers = listOfNotNull(d.background, d.foreground)
+        if (layers.isEmpty()) return null
+        // Adaptive layers are 108 units wide, of which the central 72 are the visible area.
+        val full = (size * 108f / 72f).toInt()
+        val off = (size - full) / 2
+        val content = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val cc = Canvas(content)
+        for (layer in layers) {
+            layer.setBounds(off, off, off + full, off + full)
+            layer.draw(cc)
+        }
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val radius = when (shape) {
+            "circle" -> size / 2f
+            "squircle" -> size * 0.36f
+            else -> size * 0.2f
+        }
+        c.drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), radius, radius, paint)
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+        c.drawBitmap(content, 0f, 0f, paint)
+        return out
     }
 
     companion object {
