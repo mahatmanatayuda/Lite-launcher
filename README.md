@@ -13,13 +13,16 @@ Tanpa Compose dan AppCompat: hanya `core-ktx` dan `RecyclerView`.
 - Folder: ganti nama, tarik keluar
 - App drawer: geser ke atas, pencarian, sembunyikan aplikasi
 - **Icon pack** (Nova/ADW/Apex/GO): pilih icon pack, dan ganti ikon per aplikasi
+- **Bentuk ikon**: lingkaran, squircle, atau persegi membulat (untuk ikon adaptive)
+- **Ketuk dua kali di home**: buka app drawer, notifikasi, atau pengaturan (bisa dipilih)
 - **Impor backup Nova** (`.novabackup`): halaman, posisi ikon, folder, dan dock
 - Geser ke bawah di home: panel notifikasi
 - Cache ikon dibatasi 8 MB
 
 ## Belum ada
-Widget, ikon bentuk kustom, gesture ganda-ketuk, badge notifikasi, dan pengaturan Nova selain tata letak
-(preferensi di XML backup belum dibaca). Ikon kustom Nova juga belum ikut terimpor.
+Widget, badge notifikasi, dan pengaturan Nova selain tata letak (preferensi di XML backup belum
+dibaca). Ikon kustom Nova juga belum ikut terimpor. Bentuk ikon belum berlaku untuk ikon non-adaptive
+(ikon lama tetap tampil seperti aslinya).
 
 ## Build
 Push ke GitHub (branch `main`) → tab *Actions* → *Build APK* → unduh artifact.
