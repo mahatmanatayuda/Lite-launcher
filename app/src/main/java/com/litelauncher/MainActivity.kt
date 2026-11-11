@@ -28,7 +28,6 @@ import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -70,6 +69,7 @@ class MainActivity : Activity() {
 
     private var allApps: List<AppInfo> = emptyList()
     private var drawerOpen = false
+    private var dragging = false
     private var openFolderId: Long? = null
     private var pagesBeforeDrag = 1
     private var edgeDir = 0
@@ -96,6 +96,14 @@ class MainActivity : Activity() {
             }
             pager.smoothScrollToPosition(target)
             pager.postDelayed(this, 800)
+        }
+    }
+
+    /** Redraw icons when notifications change (skipped while dragging). */
+    private val badgeRun = Runnable {
+        if (!dragging) {
+            refreshHome()
+            drawerAdapter.notifyDataSetChanged()
         }
     }
 
@@ -192,8 +200,18 @@ class MainActivity : Activity() {
         (grid.layoutManager as GridLayoutManager).spanCount = prefs.drawerCols
         drawerAdapter.iconSizePx = dp(prefs.iconSizeDp)
         drawerAdapter.showLabels = prefs.showLabels
+        drawerAdapter.showBadges = prefs.notifBadges
+        NotifState.listener = {
+            pager.removeCallbacks(badgeRun)
+            pager.postDelayed(badgeRun, 300)
+        }
         applyFilter()
         refreshHome()
+    }
+
+    override fun onPause() {
+        NotifState.listener = null
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -279,8 +297,15 @@ class MainActivity : Activity() {
         val icon = v.findViewById<ImageView>(R.id.icon)
         val folderIcon = v.findViewById<FolderIconView>(R.id.folder_icon)
         val label = v.findViewById<TextView>(R.id.label)
+        val badge = v.findViewById<View>(R.id.badge)
         label.text = item.title
         label.visibility = if (labels) View.VISIBLE else View.GONE
+        val hasDot = if (item.type == HomeItem.TYPE_APP) {
+            NotifState.has(comp(item.component)?.packageName)
+        } else {
+            model.children(item.id).any { NotifState.has(comp(it.component)?.packageName) }
+        }
+        badge.visibility = if (prefs.notifBadges && hasDot) View.VISIBLE else View.GONE
         if (item.type == HomeItem.TYPE_APP) {
             folderIcon.visibility = View.GONE
             icon.visibility = View.VISIBLE
@@ -300,12 +325,12 @@ class MainActivity : Activity() {
         v.setOnClickListener {
             if (item.type == HomeItem.TYPE_APP) launchComponent(item.component) else openFolder(item)
         }
-        v.setOnLongClickListener { startItemDrag(v, item); true }
+        v.setOnLongClickListener { dragOrLocked(v, item); true }
         return v
     }
 
     private fun currentPage(): Int {
-        val v = snap.findSnapView(pager.layoutManager) ?: return 0
+        val v = snap.findSnapView(pager.layoutManager!!) ?: return 0
         return pager.getChildAdapterPosition(v).coerceAtLeast(0)
     }
 
@@ -327,17 +352,30 @@ class MainActivity : Activity() {
 
     // ---------- Home gestures & menu ----------
 
+    /** Run a gesture action chosen in Settings. Returns false when the action is "none". */
+    private fun runGesture(action: String): Boolean {
+        when (action) {
+            "drawer" -> openDrawer()
+            "notifications" -> expandNotifications()
+            "settings" -> startActivity(Intent(this, SettingsActivity::class.java))
+            else -> return false
+        }
+        return true
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private fun setupHomeGestures() {
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
+
+            override fun onDoubleTap(e: MotionEvent): Boolean = runGesture(prefs.doubleTap)
+
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 if (e1 == null) return false
                 val dy = e2.y - e1.y
                 val dx = e2.x - e1.x
                 if (abs(dy) > abs(dx) && abs(vy) > 600) {
-                    if (dy < 0) openDrawer() else expandNotifications()
-                    return true
+                    return runGesture(if (dy < 0) prefs.swipeUp else prefs.swipeDown)
                 }
                 return false
             }
@@ -392,6 +430,14 @@ class MainActivity : Activity() {
 
     // ---------- Drag and drop ----------
 
+    private fun dragOrLocked(v: View, item: HomeItem) {
+        if (prefs.lockDesktop) {
+            Toast.makeText(this, R.string.desktop_locked, Toast.LENGTH_SHORT).show()
+        } else {
+            startItemDrag(v, item)
+        }
+    }
+
     private fun startItemDrag(v: View, item: HomeItem) {
         v.startDragAndDrop(ClipData.newPlainText("item", item.id.toString()), View.DragShadowBuilder(v), item.id, 0)
     }
@@ -408,6 +454,7 @@ class MainActivity : Activity() {
         val itemId = e.localState as? Long ?: return false
         when (e.action) {
             DragEvent.ACTION_DRAG_STARTED -> {
+                dragging = true
                 pagesBeforeDrag = model.pages
                 closeFolder(refresh = false)
                 actionBar.visibility = View.VISIBLE
@@ -429,6 +476,7 @@ class MainActivity : Activity() {
             }
             DragEvent.ACTION_DROP -> return handleDrop(itemId, e.x.toInt(), e.y.toInt())
             DragEvent.ACTION_DRAG_ENDED -> {
+                dragging = false
                 pager.removeCallbacks(edgeRun)
                 edgeDir = 0
                 actionBar.visibility = View.GONE
@@ -475,7 +523,7 @@ class MainActivity : Activity() {
             return dropOn(item, HomeItem.HOTSEAT, 0, cell.first, 0)
         }
 
-        val page = snap.findSnapView(pager.layoutManager) as? CellLayout ?: return false
+        val page = snap.findSnapView(pager.layoutManager!!) as? CellLayout ?: return false
         val pr = rectIn(page)
         if (!pr.contains(x, y)) return false
         val cell = page.cellAt((x - pr.left).toFloat(), (y - pr.top).toFloat())
@@ -532,8 +580,11 @@ class MainActivity : Activity() {
             comp(child.component)?.let { bindIcon(icon, it, size, icons) }
             val label = v.findViewById<TextView>(R.id.label)
             label.text = child.title
+            val badge = v.findViewById<View>(R.id.badge)
+            badge.visibility =
+                if (prefs.notifBadges && NotifState.has(comp(child.component)?.packageName)) View.VISIBLE else View.GONE
             v.setOnClickListener { launchComponent(child.component) }
-            v.setOnLongClickListener { startItemDrag(v, child); true }
+            v.setOnLongClickListener { dragOrLocked(v, child); true }
             val lp = GridLayout.LayoutParams()
             lp.width = dp(80)
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
