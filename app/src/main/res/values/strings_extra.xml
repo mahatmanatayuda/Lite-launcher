@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="section_gestures">Gestures</string>
+    <string name="swipe_up">Swipe up on home</string>
+    <string name="swipe_down">Swipe down on home</string>
+    <string name="double_tap">Double tap on home</string>
+    <string name="action_none">Do nothing</string>
+    <string name="action_drawer">Open app drawer</string>
+    <string name="action_notifications">Open notifications</string>
+    <string name="action_settings">Open launcher settings</string>
+    <string name="icon_shape">Icon shape</string>
+    <string name="shape_system">System default</string>
+    <string name="shape_circle">Circle</string>
+    <string name="shape_squircle">Squircle</string>
+    <string name="shape_rounded">Rounded square</string>
+    <string name="lock_desktop">Lock desktop (no moving icons)</string>
+    <string name="desktop_locked">Desktop is locked</string>
+    <string name="notif_dots">Notification dots</string>
+    <string name="notif_dots_help">Allow Lite Launcher to read notifications, then come back</string>
+    <string name="backup_launcher">Back up launcher to a file</string>
+    <string name="restore_launcher">Restore launcher from a file</string>
+    <string name="restore_confirm">This replaces your current home screen and all launcher settings with the backup. Continue?</string>
+    <string name="backup_done">Backup saved</string>
+    <string name="restore_done">Backup restored</string>
+    <string name="backup_failed">That did not work.</string>
+</resources>
