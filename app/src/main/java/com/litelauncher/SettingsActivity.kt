@@ -22,6 +22,10 @@ class SettingsActivity : Activity() {
     private lateinit var icons: IconManager
     private lateinit var content: LinearLayout
     private lateinit var packButton: Button
+    private lateinit var shapeButton: Button
+
+    private val shapeValues = listOf("system", "circle", "squircle", "rounded")
+    private val actionValues = listOf("none", "drawer", "notifications", "settings")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +45,7 @@ class SettingsActivity : Activity() {
         addSeek(R.string.desktop_rows, 3, 8, { prefs.rows }, { prefs.rows = it })
         addSeek(R.string.dock_icons, 3, 7, { prefs.hotseat }, { prefs.hotseat = it })
         addSwitch(R.string.show_clock, prefs.showClock) { prefs.showClock = it }
+        addSwitch(R.string.lock_desktop, prefs.lockDesktop) { prefs.lockDesktop = it }
 
         addHeader(getString(R.string.section_drawer))
         addSeek(R.string.drawer_cols, 3, 6, { prefs.drawerCols }, { prefs.drawerCols = it })
@@ -48,11 +53,42 @@ class SettingsActivity : Activity() {
         addHeader(getString(R.string.section_icons))
         addSeek(R.string.icon_size, 40, 72, { prefs.iconSizeDp }, { prefs.iconSizeDp = it }, " dp")
         addSwitch(R.string.show_labels, prefs.showLabels) { prefs.showLabels = it }
+        addSwitch(R.string.notif_dots, prefs.notifBadges) { on ->
+            prefs.notifBadges = on
+            if (on && !NotifState.isEnabled(this)) {
+                toast(R.string.notif_dots_help)
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+        }
         packButton = addButton("") { choosePack() }
         updatePackButton()
+        shapeButton = addButton("") { chooseShape() }
+        updateShapeButton()
+
+        addHeader(getString(R.string.section_gestures))
+        addActionButton(R.string.swipe_up, { prefs.swipeUp }, { prefs.swipeUp = it })
+        addActionButton(R.string.swipe_down, { prefs.swipeDown }, { prefs.swipeDown = it })
+        addActionButton(R.string.double_tap, { prefs.doubleTap }, { prefs.doubleTap = it })
 
         addHeader(getString(R.string.section_backup))
-        addButton(getString(R.string.import_nova)) { confirmImport() }
+        addButton(getString(R.string.backup_launcher)) {
+            val i = Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/json")
+                .putExtra(Intent.EXTRA_TITLE, "lite-launcher-backup.json")
+            startActivityForResult(i, REQ_BACKUP)
+        }
+        addButton(getString(R.string.restore_launcher)) {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.restore_confirm)
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                    startActivityForResult(i, REQ_RESTORE)
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+        addButton(getString(R.string.import_nova)) { confirmNovaImport() }
 
         addHeader(getString(R.string.section_other))
         addButton(getString(R.string.unhide_all)) {
@@ -72,7 +108,7 @@ class SettingsActivity : Activity() {
         addButton(getString(R.string.set_default)) { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
     }
 
-    // ---------- Icon pack ----------
+    // ---------- Icon pack & shape ----------
 
     private fun updatePackButton() {
         val current = prefs.iconPack
@@ -93,9 +129,59 @@ class SettingsActivity : Activity() {
         if (packs.isEmpty()) toast(R.string.no_icon_packs)
     }
 
-    // ---------- Nova backup ----------
+    private fun shapeLabel(v: String) = getString(
+        when (v) {
+            "circle" -> R.string.shape_circle
+            "squircle" -> R.string.shape_squircle
+            "rounded" -> R.string.shape_rounded
+            else -> R.string.shape_system
+        }
+    )
 
-    private fun confirmImport() {
+    private fun updateShapeButton() {
+        shapeButton.text = getString(R.string.icon_shape) + ": " + shapeLabel(prefs.iconShape)
+    }
+
+    private fun chooseShape() {
+        AlertDialog.Builder(this)
+            .setItems(shapeValues.map { shapeLabel(it) }.toTypedArray()) { _, i ->
+                prefs.iconShape = shapeValues[i]
+                updateShapeButton()
+            }
+            .show()
+    }
+
+    // ---------- Gestures ----------
+
+    private fun actionLabel(v: String) = getString(
+        when (v) {
+            "drawer" -> R.string.action_drawer
+            "notifications" -> R.string.action_notifications
+            "settings" -> R.string.action_settings
+            else -> R.string.action_none
+        }
+    )
+
+    private fun addActionButton(label: Int, get: () -> String, set: (String) -> Unit) {
+        val b = Button(this)
+        fun refresh() {
+            b.text = getString(label) + ": " + actionLabel(get())
+        }
+        b.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setItems(actionValues.map { actionLabel(it) }.toTypedArray()) { _, i ->
+                    set(actionValues[i])
+                    refresh()
+                }
+                .show()
+        }
+        refresh()
+        content.addView(b)
+    }
+
+    // ---------- Backup, restore, Nova import ----------
+
+    private fun confirmNovaImport() {
         AlertDialog.Builder(this)
             .setMessage(R.string.import_nova_confirm)
             .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -109,8 +195,36 @@ class SettingsActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK) return
         val uri: Uri = data?.data ?: return
-        if (requestCode != REQ_NOVA || resultCode != RESULT_OK) return
+        when (requestCode) {
+            REQ_NOVA -> importNova(uri)
+            REQ_BACKUP -> runIo(R.string.backup_done, false) { BackupManager.write(this, uri) }
+            REQ_RESTORE -> runIo(R.string.restore_done, true) { BackupManager.read(this, uri) }
+        }
+    }
+
+    /** Run file work off the main thread and report the result. */
+    private fun runIo(doneMessage: Int, reload: Boolean, block: () -> Unit) {
+        Thread {
+            try {
+                block()
+                runOnUiThread {
+                    toast(doneMessage)
+                    if (reload) recreate()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setMessage(getString(R.string.backup_failed) + "\n" + (e.message ?: ""))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                }
+            }
+        }.start()
+    }
+
+    private fun importNova(uri: Uri) {
         toast(R.string.importing)
         Thread {
             try {
@@ -223,5 +337,7 @@ class SettingsActivity : Activity() {
 
     companion object {
         private const val REQ_NOVA = 42
+        private const val REQ_BACKUP = 43
+        private const val REQ_RESTORE = 44
     }
 }
