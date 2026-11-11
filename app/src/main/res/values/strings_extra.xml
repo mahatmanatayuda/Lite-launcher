@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="section_gestures">Gestures</string>
+    <string name="double_tap">Double tap on home</string>
+    <string name="action_none">Do nothing</string>
+    <string name="action_drawer">Open app drawer</string>
+    <string name="action_notifications">Open notifications</string>
+    <string name="action_settings">Open launcher settings</string>
+    <string name="icon_shape">Icon shape</string>
+    <string name="shape_system">System default</string>
+    <string name="shape_circle">Circle</string>
+    <string name="shape_squircle">Squircle</string>
+    <string name="shape_rounded">Rounded square</string>
+</resources>
