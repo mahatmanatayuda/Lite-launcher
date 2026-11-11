@@ -23,4 +23,13 @@
     <string name="backup_done">Backup saved</string>
     <string name="restore_done">Backup restored</string>
     <string name="backup_failed">That did not work.</string>
+    <string name="choose_image">Choose an image from gallery</string>
+    <string name="reset_custom">Reset icon and name</string>
+    <string name="image_failed">That image could not be used</string>
+    <string name="group_all">All</string>
+    <string name="group_new">New group…</string>
+    <string name="group_name">Group name</string>
+    <string name="add_to_group">Add to group</string>
+    <string name="remove_from_group">Remove from this group</string>
+    <string name="group_delete_confirm">Delete group %1$s? The apps stay installed.</string>
 </resources>
