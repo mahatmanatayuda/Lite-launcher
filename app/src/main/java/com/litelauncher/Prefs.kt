@@ -34,6 +34,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("clock", true)
         set(v) = sp.edit().putBoolean("clock", v).apply()
 
+    var iconShape: String
+        get() = sp.getString("icon_shape", "system") ?: "system"
+        set(v) = sp.edit().putString("icon_shape", v).apply()
+
+    var doubleTap: String
+        get() = sp.getString("double_tap", "none") ?: "none"
+        set(v) = sp.edit().putString("double_tap", v).apply()
+
     var hidden: Set<String>
         get() = HashSet(sp.getStringSet("hidden", emptySet()) ?: emptySet())
         set(v) = sp.edit().putStringSet("hidden", HashSet(v)).apply()
