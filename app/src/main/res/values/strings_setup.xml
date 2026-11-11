@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_app_label">Lite Launcher Setup</string>
+    <string name="setup_step">Step %1$d of %2$d</string>
+    <string name="setup_next">Next</string>
+    <string name="setup_back">Back</string>
+    <string name="setup_finish">Finish</string>
+    <string name="setup_welcome_title">Welcome to Lite Launcher</string>
+    <string name="setup_welcome_body">A few quick choices to set things up the way you like. Every choice can be changed later in Settings.</string>
+    <string name="setup_import">Import my Nova Launcher backup</string>
+    <string name="setup_or_manual">Or set it up by hand: tap Next.</string>
+    <string name="setup_layout_title">Home screen</string>
+    <string name="setup_grid">Grid size</string>
+    <string name="setup_grid_roomy">Roomy: 4 × 5, large icons</string>
+    <string name="setup_grid_standard">Standard: 5 × 5</string>
+    <string name="setup_grid_dense">Dense: 6 × 6, small icons</string>
+    <string name="setup_icons_title">Icons and drawer</string>
+    <string name="setup_gestures_title">Gestures</string>
+    <string name="setup_extras_title">Extras</string>
+    <string name="setup_finish_title">All set</string>
+    <string name="setup_finish_body">Make Lite Launcher your default home app so the Home button opens it. You can open every option later from Settings (hold an empty spot on the home screen).</string>
+    <string name="setup_open_settings">Open all settings</string>
+</resources>
