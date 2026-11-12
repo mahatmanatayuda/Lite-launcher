@@ -4,14 +4,14 @@ import android.content.Context
 import android.util.AttributeSet
 import android.view.ViewGroup
 
-/** A simple grid: every child sits in one cell (cx, cy). */
+/** A simple grid: every child starts in one cell (cx, cy) and may cover sx x sy cells (widgets). */
 class CellLayout @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null,
 ) : ViewGroup(context, attrs) {
     var cols = 4
     var rows = 5
 
-    class LP(val cx: Int, val cy: Int) :
+    class LP(val cx: Int, val cy: Int, val sx: Int = 1, val sy: Int = 1) :
         ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
 
     override fun checkLayoutParams(p: ViewGroup.LayoutParams?) = p is LP
@@ -25,9 +25,11 @@ class CellLayout @JvmOverloads constructor(
         val cw = w / cols
         val ch = h / rows
         for (i in 0 until childCount) {
-            getChildAt(i).measure(
-                MeasureSpec.makeMeasureSpec(cw, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(ch, MeasureSpec.EXACTLY),
+            val c = getChildAt(i)
+            val lp = c.layoutParams as LP
+            c.measure(
+                MeasureSpec.makeMeasureSpec(cw * lp.sx, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(ch * lp.sy, MeasureSpec.EXACTLY),
             )
         }
     }
@@ -38,7 +40,7 @@ class CellLayout @JvmOverloads constructor(
         for (i in 0 until childCount) {
             val c = getChildAt(i)
             val lp = c.layoutParams as LP
-            c.layout(lp.cx * cw, lp.cy * ch, (lp.cx + 1) * cw, (lp.cy + 1) * ch)
+            c.layout(lp.cx * cw, lp.cy * ch, (lp.cx + lp.sx) * cw, (lp.cy + lp.sy) * ch)
         }
     }
 
