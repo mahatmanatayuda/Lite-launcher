@@ -39,6 +39,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("lock_desktop", false)
         set(v) = sp.edit().putBoolean("lock_desktop", v).apply()
 
+    var loopPages: Boolean
+        get() = sp.getBoolean("loop_pages", false)
+        set(v) = sp.edit().putBoolean("loop_pages", v).apply()
+
     var notifBadges: Boolean
         get() = sp.getBoolean("notif_badges", false)
         set(v) = sp.edit().putBoolean("notif_badges", v).apply()
@@ -58,6 +62,11 @@ class Prefs(context: Context) {
     var doubleTap: String
         get() = sp.getString("double_tap", "none") ?: "none"
         set(v) = sp.edit().putString("double_tap", v).apply()
+
+    /** What swiping up on an icon does: "none", "menu" or "info". */
+    var iconSwipe: String
+        get() = sp.getString("icon_swipe", "none") ?: "none"
+        set(v) = sp.edit().putString("icon_swipe", v).apply()
 
     var hidden: Set<String>
         get() = HashSet(sp.getStringSet("hidden", emptySet()) ?: emptySet())
