@@ -4,6 +4,9 @@ Launcher Android yang ringan dengan fitur ala Nova Launcher (termasuk fitur seta
 bukan modifikasi Nova. Tanpa Compose dan AppCompat: hanya `core-ktx` dan `RecyclerView`.
 
 ## Fitur
+- **Panduan setup awal** (ikon terpisah "Lite Launcher Setup"): pilih ukuran grid, bentuk ikon, icon pack,
+  gestur, dan opsi tambahan, bisa langsung impor backup Nova atau backup Lite Launcher, lalu jadikan
+  launcher utama. Bisa dijalankan lagi dari Pengaturan.
 - Beberapa halaman home (geser kiri/kanan), grid bisa diatur (3–8 kolom/baris)
 - Dock dengan 3–7 ikon
 - Drag & drop: pindahkan ikon, taruh di atas ikon lain untuk membuat folder
@@ -42,4 +45,5 @@ variables → Actions*: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KE
 Dengan kunci sendiri, versi baru bisa langsung menimpa versi lama tanpa uninstall.
 
 ## Pasang sebagai launcher utama
-Unduh APK dari *Releases* → instal → tekan Home → pilih *Lite Launcher* → *Selalu*.
+Unduh APK dari *Releases* → instal → buka ikon **Lite Launcher Setup** dan ikuti langkahnya
+(atau tekan Home → pilih *Lite Launcher* → *Selalu*).
