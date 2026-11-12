@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_app_label">Lite Launcher Setup</string>
+    <string name="setup_step">Langkah %1$d dari %2$d</string>
+    <string name="setup_next">Lanjut</string>
+    <string name="setup_back">Kembali</string>
+    <string name="setup_finish">Selesai</string>
+    <string name="setup_welcome_title">Selamat datang di Lite Launcher</string>
+    <string name="setup_welcome_body">Beberapa pilihan singkat supaya launcher sesuai seleramu. Semua pilihan bisa diubah nanti di Pengaturan.</string>
+    <string name="setup_import">Impor backup Nova Launcher saya</string>
+    <string name="setup_or_manual">Atau atur sendiri: ketuk Lanjut.</string>
+    <string name="setup_layout_title">Layar home</string>
+    <string name="setup_grid">Ukuran grid</string>
+    <string name="setup_grid_roomy">Lega: 4 × 5, ikon besar</string>
+    <string name="setup_grid_standard">Standar: 5 × 5</string>
+    <string name="setup_grid_dense">Padat: 6 × 6, ikon kecil</string>
+    <string name="setup_icons_title">Ikon dan drawer</string>
+    <string name="setup_gestures_title">Gestur</string>
+    <string name="setup_extras_title">Tambahan</string>
+    <string name="setup_finish_title">Semua siap</string>
+    <string name="setup_finish_body">Jadikan Lite Launcher aplikasi home utama supaya tombol Home membukanya. Semua opsi bisa dibuka lagi dari Pengaturan (tahan area kosong di layar home).</string>
+    <string name="setup_open_settings">Buka semua pengaturan</string>
+</resources>
