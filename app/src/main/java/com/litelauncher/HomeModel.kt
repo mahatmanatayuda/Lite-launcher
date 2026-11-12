@@ -7,23 +7,27 @@ import java.io.File
 
 class HomeItem(
     var id: Long,
-    var type: Int,            // TYPE_APP or TYPE_FOLDER
+    var type: Int,            // TYPE_APP, TYPE_FOLDER or TYPE_WIDGET
     var container: Long,      // DESKTOP, HOTSEAT, or the id of a folder
     var screen: Int,
     var x: Int,               // for folder children: order index
     var y: Int,
     var title: String,
-    var component: String?,   // flattened ComponentName (apps only)
+    var component: String?,   // flattened ComponentName (apps: the activity, widgets: the provider)
+    var spanX: Int = 1,       // widgets cover spanX x spanY cells
+    var spanY: Int = 1,
+    var widgetId: Int = -1,   // AppWidgetHost id (widgets only)
 ) {
     companion object {
         const val TYPE_APP = 0
         const val TYPE_FOLDER = 1
+        const val TYPE_WIDGET = 2
         const val DESKTOP = -100L
         const val HOTSEAT = -101L
     }
 }
 
-/** Home screen layout: pages of cells, a dock (hotseat) and folders. Persisted as JSON. */
+/** Home screen layout: pages of cells, a dock (hotseat), folders and widgets. Persisted as JSON. */
 class HomeModel {
     var cols = 5
     var rows = 5
@@ -36,8 +40,10 @@ class HomeModel {
     fun find(id: Long): HomeItem? = items.firstOrNull { it.id == id }
     fun children(folderId: Long): List<HomeItem> = items.filter { it.container == folderId }.sortedBy { it.x }
 
+    /** The item covering this cell (widgets cover several cells). */
     fun at(container: Long, screen: Int, x: Int, y: Int): HomeItem? = items.firstOrNull {
-        it.container == container && (container != HomeItem.DESKTOP || it.screen == screen) && it.x == x && it.y == y
+        it.container == container && (container != HomeItem.DESKTOP || it.screen == screen) &&
+            x >= it.x && x < it.x + it.spanX && y >= it.y && y < it.y + it.spanY
     }
 
     fun remove(item: HomeItem) {
@@ -67,12 +73,47 @@ class HomeModel {
         if (old > 0 && old != container) tidyFolder(old)
     }
 
+    /** Can a sx x sy block start at (x, y) on this page? [ignore] is allowed to be in the way (itself). */
+    fun fits(ignore: HomeItem?, screen: Int, x: Int, y: Int, sx: Int, sy: Int): Boolean {
+        if (x < 0 || y < 0 || x + sx > cols || y + sy > rows) return false
+        for (dy in 0 until sy) {
+            for (dx in 0 until sx) {
+                val o = at(HomeItem.DESKTOP, screen, x + dx, y + dy)
+                if (o != null && o !== ignore) return false
+            }
+        }
+        return true
+    }
+
+    fun findSpace(screen: Int, sx: Int, sy: Int): Pair<Int, Int>? {
+        for (y in 0..(rows - sy)) {
+            for (x in 0..(cols - sx)) {
+                if (fits(null, screen, x, y, sx, sy)) return x to y
+            }
+        }
+        return null
+    }
+
+    fun resize(widget: HomeItem, sx: Int, sy: Int): Boolean {
+        if (!fits(widget, widget.screen, widget.x, widget.y, sx, sy)) return false
+        widget.spanX = sx
+        widget.spanY = sy
+        return true
+    }
+
     /** Drop an existing item on a cell: move it, or merge into a folder. */
     fun dropAt(moving: HomeItem, container: Long, screen: Int, x: Int, y: Int): Boolean {
+        if (moving.type == HomeItem.TYPE_WIDGET) {
+            if (container != HomeItem.DESKTOP) return false
+            if (!fits(moving, screen, x, y, moving.spanX, moving.spanY)) return false
+            place(moving, container, screen, x, y)
+            return true
+        }
         val target = at(container, screen, x, y)
         if (target === moving) return true
         when {
             target == null -> place(moving, container, screen, x, y)
+            target.type == HomeItem.TYPE_WIDGET -> return false
             target.type == HomeItem.TYPE_FOLDER -> {
                 if (moving.type == HomeItem.TYPE_FOLDER) return false
                 if (moving.container == target.id) return true
@@ -121,9 +162,23 @@ class HomeModel {
         if (pages < 1) { pages = 1; changed = true }
         val maxScreen = items.filter { it.container == HomeItem.DESKTOP }.maxOfOrNull { it.screen } ?: 0
         if (maxScreen >= pages) { pages = maxScreen + 1; changed = true }
+
+        // Widgets: shrink and shift them back into the grid.
+        for (w in items.filter { it.type == HomeItem.TYPE_WIDGET }) {
+            val sx = w.spanX.coerceIn(1, cols)
+            val sy = w.spanY.coerceIn(1, rows)
+            val nx = w.x.coerceIn(0, cols - sx)
+            val ny = w.y.coerceIn(0, rows - sy)
+            if (sx != w.spanX || sy != w.spanY || nx != w.x || ny != w.y) {
+                w.spanX = sx; w.spanY = sy; w.x = nx; w.y = ny
+                changed = true
+            }
+        }
+
         val misplaced = items.filter {
-            (it.container == HomeItem.DESKTOP && (it.x >= cols || it.y >= rows)) ||
-                (it.container == HomeItem.HOTSEAT && it.x >= hotseat)
+            it.type != HomeItem.TYPE_WIDGET &&
+                ((it.container == HomeItem.DESKTOP && (it.x >= cols || it.y >= rows)) ||
+                    (it.container == HomeItem.HOTSEAT && it.x >= hotseat))
         }
         for (m in misplaced) {
             var placed = false
@@ -158,6 +213,7 @@ class HomeModel {
             arr.put(
                 JSONObject().put("id", i.id).put("t", i.type).put("c", i.container).put("s", i.screen)
                     .put("x", i.x).put("y", i.y).put("n", i.title).put("k", i.component ?: "")
+                    .put("sx", i.spanX).put("sy", i.spanY).put("w", i.widgetId)
             )
         }
         return JSONObject().put("pages", pages).put("next", nextId).put("items", arr).toString()
@@ -187,6 +243,7 @@ class HomeModel {
                         HomeItem(
                             j.getLong("id"), j.getInt("t"), j.getLong("c"), j.getInt("s"),
                             j.getInt("x"), j.getInt("y"), j.optString("n"), j.optString("k").ifEmpty { null },
+                            j.optInt("sx", 1), j.optInt("sy", 1), j.optInt("w", -1),
                         )
                     )
                 }
