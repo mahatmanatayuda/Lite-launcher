@@ -91,6 +91,9 @@ class SettingsActivity : Activity() {
         addButton(getString(R.string.import_nova)) { confirmNovaImport() }
 
         addHeader(getString(R.string.section_other))
+        addButton(getString(R.string.wiz_run_again)) {
+            startActivity(Intent(this, SetupActivity::class.java))
+        }
         addButton(getString(R.string.unhide_all)) {
             prefs.hidden = emptySet()
             toast(R.string.done)
