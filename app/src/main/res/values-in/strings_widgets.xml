@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widgets">Widget</string>
+    <string name="resize_widget">Ubah ukuran widget</string>
+    <string name="widget_wider">Lebih lebar</string>
+    <string name="widget_narrower">Lebih sempit</string>
+    <string name="widget_taller">Lebih tinggi</string>
+    <string name="widget_shorter">Lebih pendek</string>
+    <string name="widget_cannot_resize">Tidak ada ruang untuk mengubah ukuran ke arah itu</string>
+    <string name="widget_failed">Widget itu tidak bisa ditambahkan</string>
+    <string name="cannot_drop">Tidak muat di situ</string>
+    <string name="loop_pages">Halaman home berputar (loop)</string>
+    <string name="icon_swipe">Geser ke atas pada ikon</string>
+    <string name="icon_swipe_menu">Buka menu ikon</string>
+    <string name="icon_swipe_info">Buka info aplikasi</string>
+</resources>
