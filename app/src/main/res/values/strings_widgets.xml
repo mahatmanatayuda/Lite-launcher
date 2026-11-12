@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widgets">Widgets</string>
+    <string name="resize_widget">Resize widget</string>
+    <string name="widget_wider">Wider</string>
+    <string name="widget_narrower">Narrower</string>
+    <string name="widget_taller">Taller</string>
+    <string name="widget_shorter">Shorter</string>
+    <string name="widget_cannot_resize">No room to resize it that way</string>
+    <string name="widget_failed">Could not add that widget</string>
+    <string name="cannot_drop">It does not fit there</string>
+    <string name="loop_pages">Loop home pages</string>
+    <string name="icon_swipe">Swipe up on an icon</string>
+    <string name="icon_swipe_menu">Open the icon menu</string>
+    <string name="icon_swipe_info">Open app info</string>
+</resources>
