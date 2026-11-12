@@ -26,6 +26,7 @@ class SettingsActivity : Activity() {
 
     private val shapeValues = listOf("system", "circle", "squircle", "rounded")
     private val actionValues = listOf("none", "drawer", "notifications", "settings")
+    private val iconSwipeValues = listOf("none", "menu", "info")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +47,7 @@ class SettingsActivity : Activity() {
         addSeek(R.string.dock_icons, 3, 7, { prefs.hotseat }, { prefs.hotseat = it })
         addSwitch(R.string.show_clock, prefs.showClock) { prefs.showClock = it }
         addSwitch(R.string.lock_desktop, prefs.lockDesktop) { prefs.lockDesktop = it }
+        addSwitch(R.string.loop_pages, prefs.loopPages) { prefs.loopPages = it }
 
         addHeader(getString(R.string.section_drawer))
         addSeek(R.string.drawer_cols, 3, 6, { prefs.drawerCols }, { prefs.drawerCols = it })
@@ -69,6 +71,7 @@ class SettingsActivity : Activity() {
         addActionButton(R.string.swipe_up, { prefs.swipeUp }, { prefs.swipeUp = it })
         addActionButton(R.string.swipe_down, { prefs.swipeDown }, { prefs.swipeDown = it })
         addActionButton(R.string.double_tap, { prefs.doubleTap }, { prefs.doubleTap = it })
+        addIconSwipeButton()
 
         addHeader(getString(R.string.section_backup))
         addButton(getString(R.string.backup_launcher)) {
@@ -165,6 +168,14 @@ class SettingsActivity : Activity() {
         }
     )
 
+    private fun iconSwipeLabel(v: String) = getString(
+        when (v) {
+            "menu" -> R.string.icon_swipe_menu
+            "info" -> R.string.icon_swipe_info
+            else -> R.string.action_none
+        }
+    )
+
     private fun addActionButton(label: Int, get: () -> String, set: (String) -> Unit) {
         val b = Button(this)
         fun refresh() {
@@ -174,6 +185,23 @@ class SettingsActivity : Activity() {
             AlertDialog.Builder(this)
                 .setItems(actionValues.map { actionLabel(it) }.toTypedArray()) { _, i ->
                     set(actionValues[i])
+                    refresh()
+                }
+                .show()
+        }
+        refresh()
+        content.addView(b)
+    }
+
+    private fun addIconSwipeButton() {
+        val b = Button(this)
+        fun refresh() {
+            b.text = getString(R.string.icon_swipe) + ": " + iconSwipeLabel(prefs.iconSwipe)
+        }
+        b.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setItems(iconSwipeValues.map { iconSwipeLabel(it) }.toTypedArray()) { _, i ->
+                    prefs.iconSwipe = iconSwipeValues[i]
                     refresh()
                 }
                 .show()
