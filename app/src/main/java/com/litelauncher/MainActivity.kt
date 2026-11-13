@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.Dialog
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ComponentName
@@ -54,6 +56,8 @@ class MainActivity : Activity() {
     private lateinit var drawerAdapter: AppAdapter
     private lateinit var pageAdapter: PageAdapter
     private lateinit var snap: PagerSnapHelper
+    private lateinit var awm: AppWidgetManager
+    private lateinit var host: LauncherWidgetHost
 
     private lateinit var root: View
     private lateinit var home: View
@@ -79,8 +83,12 @@ class MainActivity : Activity() {
     private var groups: Map<String, List<String>> = emptyMap()
     private var currentGroup: String? = null
     private var pendingIcon: ComponentName? = null
+    private var pendingWidgetId = -1
+    private var pendingProvider: AppWidgetProviderInfo? = null
     private var drawerOpen = false
     private var dragging = false
+    private var lastLoop = false
+    private var lastPages = -1
     private var openFolderId: Long? = null
     private var pagesBeforeDrag = 1
     private var edgeDir = 0
@@ -97,13 +105,15 @@ class MainActivity : Activity() {
     private val edgeRun = object : Runnable {
         override fun run() {
             if (edgeDir == 0) return
-            val target = currentPage() + edgeDir
-            if (target < 0) return
-            if (target >= model.pages) {
-                if (model.pages >= MAX_PAGES) return
-                model.pages++
-                pageAdapter.notifyItemInserted(model.pages - 1)
-                updateDots()
+            val target = rawCurrent() + edgeDir
+            if (!looping()) {
+                if (target < 0) return
+                if (target >= model.pages) {
+                    if (model.pages >= MAX_PAGES) return
+                    model.pages++
+                    pageAdapter.notifyItemInserted(model.pages - 1)
+                    updateDots()
+                }
             }
             pager.smoothScrollToPosition(target)
             pager.postDelayed(this, 800)
@@ -132,6 +142,8 @@ class MainActivity : Activity() {
         prefs = Prefs(this)
         icons = IconManager(this)
         model = HomeModel.load(this)
+        awm = AppWidgetManager.getInstance(this)
+        host = LauncherWidgetHost(applicationContext, HOST_ID)
 
         root = findViewById(R.id.root)
         home = findViewById(R.id.home)
@@ -200,6 +212,16 @@ class MainActivity : Activity() {
         reloadApps()
     }
 
+    override fun onStart() {
+        super.onStart()
+        try { host.startListening() } catch (e: Exception) { /* widgets update later */ }
+    }
+
+    override fun onStop() {
+        try { host.stopListening() } catch (e: Exception) { /* ignore */ }
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         icons.reloadConfig()
@@ -245,7 +267,7 @@ class MainActivity : Activity() {
         if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
             closeFolder()
             closeDrawer()
-            pager.smoothScrollToPosition(0)
+            scrollToPage(0, true)
         }
     }
 
@@ -260,11 +282,29 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_IMAGE && resultCode == RESULT_OK) {
-            val uri = data?.data
-            val target = pendingIcon
-            pendingIcon = null
-            if (uri != null && target != null) saveCustomIcon(target, uri)
+        when (requestCode) {
+            REQ_IMAGE -> {
+                val uri = data?.data
+                val target = pendingIcon
+                pendingIcon = null
+                if (resultCode == RESULT_OK && uri != null && target != null) saveCustomIcon(target, uri)
+            }
+            REQ_WIDGET_BIND, REQ_WIDGET_CONFIG -> {
+                val id = pendingWidgetId
+                val info = pendingProvider
+                if (id < 0 || info == null) return
+                if (resultCode != RESULT_OK) {
+                    pendingWidgetId = -1
+                    pendingProvider = null
+                    deleteWidgetId(id)
+                } else if (requestCode == REQ_WIDGET_BIND) {
+                    finishWidget(id, info)
+                } else {
+                    pendingWidgetId = -1
+                    pendingProvider = null
+                    placeWidgetOrFail(id, info)
+                }
+            }
         }
     }
 
@@ -278,12 +318,36 @@ class MainActivity : Activity() {
     private fun labelOf(flat: String?, fallback: String): String =
         flat?.let { customLabels[it] } ?: fallback
 
-    // ---------- Home pager ----------
+    // ---------- Home pager (with optional page loop) ----------
+
+    private fun looping() = prefs.loopPages && model.pages > 1
+
+    /** Which home page an adapter position shows (positions repeat when the loop is on). */
+    private fun pageOf(position: Int): Int = if (model.pages > 0) position % model.pages else 0
+
+    private fun rawCurrent(): Int {
+        val v = snap.findSnapView(pager.layoutManager!!) ?: return 0
+        return pager.getChildAdapterPosition(v).coerceAtLeast(0)
+    }
+
+    private fun currentPage(): Int = pageOf(rawCurrent())
+
+    private fun startPosition(page: Int): Int {
+        if (!looping()) return page
+        val mid = LOOP_COUNT / 2
+        return mid - mid % model.pages + page
+    }
+
+    private fun scrollToPage(page: Int, smooth: Boolean) {
+        val raw = rawCurrent()
+        val target = if (looping()) raw - pageOf(raw) + page else page
+        if (smooth) pager.smoothScrollToPosition(target) else pager.scrollToPosition(target)
+    }
 
     inner class PageAdapter : RecyclerView.Adapter<PageAdapter.VH>() {
         inner class VH(val cell: CellLayout) : RecyclerView.ViewHolder(cell)
 
-        override fun getItemCount() = model.pages
+        override fun getItemCount() = if (looping()) LOOP_COUNT else model.pages
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val c = CellLayout(parent.context)
@@ -296,12 +360,19 @@ class MainActivity : Activity() {
         }
 
         override fun onBindViewHolder(holder: VH, position: Int) {
-            fillCells(holder.cell, HomeItem.DESKTOP, position, model.cols, model.rows, prefs.showLabels)
+            fillCells(holder.cell, HomeItem.DESKTOP, pageOf(position), model.cols, model.rows, prefs.showLabels)
         }
     }
 
     private fun refreshHome() {
+        val keep = currentPage()
         pageAdapter.notifyDataSetChanged()
+        val loop = looping()
+        if (loop != lastLoop || model.pages != lastPages) {
+            lastLoop = loop
+            lastPages = model.pages
+            pager.scrollToPosition(startPosition(keep.coerceIn(0, (model.pages - 1).coerceAtLeast(0))))
+        }
         fillCells(hotseat, HomeItem.HOTSEAT, 0, model.hotseat, 1, false)
         updateDots()
     }
@@ -311,9 +382,13 @@ class MainActivity : Activity() {
         cell.cols = cols
         cell.rows = rows
         for (item in model.items) {
-            if (item.container == container && (container != HomeItem.DESKTOP || item.screen == screen) &&
-                item.x < cols && item.y < rows
-            ) {
+            if (item.container != container) continue
+            if (container == HomeItem.DESKTOP && item.screen != screen) continue
+            if (item.x >= cols || item.y >= rows) continue
+            if (item.type == HomeItem.TYPE_WIDGET) {
+                val w = makeWidgetView(item) ?: continue
+                cell.addView(w, CellLayout.LP(item.x, item.y, item.spanX, item.spanY))
+            } else {
                 cell.addView(makeItemView(item, labels), CellLayout.LP(item.x, item.y))
             }
         }
@@ -356,12 +431,44 @@ class MainActivity : Activity() {
             if (item.type == HomeItem.TYPE_APP) launchComponent(item.component) else openFolder(item)
         }
         v.setOnLongClickListener { dragOrLocked(v, item); true }
+        if (item.type == HomeItem.TYPE_APP && prefs.iconSwipe != "none") attachIconSwipe(v, item)
         return v
     }
 
-    private fun currentPage(): Int {
-        val v = snap.findSnapView(pager.layoutManager!!) ?: return 0
-        return pager.getChildAdapterPosition(v).coerceAtLeast(0)
+    /** Swiping up on an app icon opens its menu or its info, depending on the setting. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun attachIconSwipe(v: View, item: HomeItem) {
+        var fired = false
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                if (e1 == null) return false
+                if (e1.y - e2.y > dp(32) && abs(vy) > abs(vx) && vy < -500) {
+                    fired = true
+                    if (prefs.iconSwipe == "info") {
+                        comp(item.component)?.let { openAppInfo(it.packageName) }
+                    } else {
+                        showItemDialog(item)
+                    }
+                    return true
+                }
+                return false
+            }
+        })
+        v.setOnTouchListener { _, ev ->
+            fired = false
+            detector.onTouchEvent(ev)
+            fired
+        }
+    }
+
+    /** True when a touch that began at (x, y) in the pager was on an app icon. */
+    private fun startedOnAppIcon(x: Float, y: Float): Boolean {
+        val page = pager.findChildViewUnder(x, y) as? CellLayout ?: return false
+        val cell = page.cellAt(x - page.left, y - page.top)
+        val item = model.at(HomeItem.DESKTOP, pageOf(pager.getChildAdapterPosition(page)), cell.first, cell.second)
+        return item != null && item.type == HomeItem.TYPE_APP
     }
 
     private fun updateDots() {
@@ -405,6 +512,8 @@ class MainActivity : Activity() {
                 val dy = e2.y - e1.y
                 val dx = e2.x - e1.x
                 if (abs(dy) > abs(dx) && abs(vy) > 600) {
+                    // A swipe up that starts on an icon belongs to the icon, not to the home screen.
+                    if (dy < 0 && prefs.iconSwipe != "none" && startedOnAppIcon(e1.x, e1.y)) return false
                     return runGesture(if (dy < 0) prefs.swipeUp else prefs.swipeDown)
                 }
                 return false
@@ -424,12 +533,13 @@ class MainActivity : Activity() {
     private fun showHomeMenu() {
         val entries: List<Pair<String, () -> Unit>> = listOf(
             getString(R.string.wallpaper) to { startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), getString(R.string.wallpaper))) },
+            getString(R.string.widgets) to { showWidgetPicker() },
             getString(R.string.add_page) to {
                 if (model.pages < MAX_PAGES) {
                     model.pages++
                     model.save(this)
                     refreshHome()
-                    pager.scrollToPosition(model.pages - 1)
+                    scrollToPage(model.pages - 1, false)
                     pager.post { updateDots() }
                 }
             },
@@ -456,6 +566,163 @@ class MainActivity : Activity() {
         } catch (_: Exception) {
             // Not available on this ROM.
         }
+    }
+
+    // ---------- Widgets ----------
+
+    private fun makeWidgetView(item: HomeItem): View? {
+        return try {
+            val info = awm.getAppWidgetInfo(item.widgetId) ?: return null
+            val hv = host.createView(this, item.widgetId, info)
+            if (hv is LauncherWidgetView) hv.onLongPress = { dragOrLocked(hv, item) }
+            hv
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun appLabel(pkg: String): String = try {
+        packageManager.getApplicationInfo(pkg, 0).loadLabel(packageManager).toString()
+    } catch (e: Exception) {
+        pkg
+    }
+
+    private fun showWidgetPicker() {
+        val pm = packageManager
+        val providers = awm.installedProviders
+            .filter { (it.widgetCategory and AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN) != 0 }
+            .sortedBy { it.loadLabel(pm).lowercase() }
+        if (providers.isEmpty()) {
+            Toast.makeText(this, R.string.widget_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = providers.map { it.loadLabel(pm) + " – " + appLabel(it.provider.packageName) }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.widgets)
+            .setItems(names.toTypedArray()) { _, i -> addWidget(providers[i]) }
+            .show()
+    }
+
+    private fun addWidget(info: AppWidgetProviderInfo) {
+        val id = host.allocateAppWidgetId()
+        if (awm.bindAppWidgetIdIfAllowed(id, info.provider)) {
+            pendingWidgetId = id
+            pendingProvider = info
+            finishWidget(id, info)
+            return
+        }
+        // Not allowed silently: ask the user, as the system requires for non-system launchers.
+        pendingWidgetId = id
+        pendingProvider = info
+        val i = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+        try {
+            startActivityForResult(i, REQ_WIDGET_BIND)
+        } catch (e: Exception) {
+            pendingWidgetId = -1
+            pendingProvider = null
+            deleteWidgetId(id)
+            Toast.makeText(this, R.string.widget_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** The widget is bound: run its configuration screen if it has one, then place it. */
+    private fun finishWidget(id: Int, info: AppWidgetProviderInfo) {
+        if (info.configure != null) {
+            try {
+                host.startAppWidgetConfigureActivityForResult(this, id, 0, REQ_WIDGET_CONFIG, null)
+                return
+            } catch (e: Exception) {
+                // Configuration screen unavailable: place the widget as it is.
+            }
+        }
+        pendingWidgetId = -1
+        pendingProvider = null
+        placeWidgetOrFail(id, info)
+    }
+
+    private fun placeWidgetOrFail(id: Int, info: AppWidgetProviderInfo) {
+        if (!placeWidget(id, info)) {
+            deleteWidgetId(id)
+            Toast.makeText(this, R.string.cannot_drop, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Default size: the smallest block of cells that covers the widget's minimum size. */
+    private fun spansFor(info: AppWidgetProviderInfo): Pair<Int, Int> {
+        val cw = (pager.width / model.cols).coerceAtLeast(1)
+        val ch = (pager.height / model.rows).coerceAtLeast(1)
+        val sx = ((info.minWidth + cw - 1) / cw).coerceIn(1, model.cols)
+        val sy = ((info.minHeight + ch - 1) / ch).coerceIn(1, model.rows)
+        return sx to sy
+    }
+
+    private fun placeWidget(id: Int, info: AppWidgetProviderInfo): Boolean {
+        val (sx, sy) = spansFor(info)
+        val current = currentPage()
+        val order = listOf(current) + (0 until model.pages).filter { it != current }
+        for (s in order) {
+            val pos = model.findSpace(s, sx, sy) ?: continue
+            addWidgetItem(id, info, s, pos.first, pos.second, sx, sy)
+            return true
+        }
+        if (model.pages < MAX_PAGES) {
+            val s = model.pages
+            model.pages++
+            val pos = model.findSpace(s, sx, sy)
+            if (pos != null) {
+                addWidgetItem(id, info, s, pos.first, pos.second, sx, sy)
+                return true
+            }
+            model.pages--
+        }
+        return false
+    }
+
+    private fun addWidgetItem(id: Int, info: AppWidgetProviderInfo, screen: Int, x: Int, y: Int, sx: Int, sy: Int) {
+        model.items.add(
+            HomeItem(
+                model.nextId(), HomeItem.TYPE_WIDGET, HomeItem.DESKTOP, screen, x, y,
+                info.loadLabel(packageManager), info.provider.flattenToString(), sx, sy, id,
+            )
+        )
+        model.save(this)
+        refreshHome()
+        scrollToPage(screen, false)
+    }
+
+    private fun deleteWidgetId(id: Int) {
+        try { host.deleteAppWidgetId(id) } catch (e: Exception) { /* already gone */ }
+    }
+
+    /** Remove an item from the home screen, releasing its widget id if it is a widget. */
+    private fun removeItem(item: HomeItem) {
+        if (item.type == HomeItem.TYPE_WIDGET && item.widgetId >= 0) deleteWidgetId(item.widgetId)
+        model.remove(item)
+    }
+
+    private fun showResizeDialog(item: HomeItem) {
+        val options = listOf(
+            R.string.widget_wider to (1 to 0),
+            R.string.widget_narrower to (-1 to 0),
+            R.string.widget_taller to (0 to 1),
+            R.string.widget_shorter to (0 to -1),
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.resize_widget)
+            .setItems(options.map { getString(it.first) }.toTypedArray()) { _, i ->
+                val d = options[i].second
+                val nx = item.spanX + d.first
+                val ny = item.spanY + d.second
+                if (nx >= 1 && ny >= 1 && model.resize(item, nx, ny)) {
+                    model.save(this)
+                    refreshHome()
+                } else {
+                    Toast.makeText(this, R.string.widget_cannot_resize, Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
     }
 
     // ---------- Drag and drop ----------
@@ -539,7 +806,7 @@ class MainActivity : Activity() {
 
         if (actionBar.visibility == View.VISIBLE && y <= rectIn(actionBar).bottom) {
             when {
-                rectIn(actRemove).contains(x, y) -> model.remove(item)
+                rectIn(actRemove).contains(x, y) -> removeItem(item)
                 rectIn(actInfo).contains(x, y) -> comp(item.component)?.let { openAppInfo(it.packageName) }
                 rectIn(actUninstall).contains(x, y) -> comp(item.component)?.let { uninstall(it.packageName) }
             }
@@ -557,7 +824,7 @@ class MainActivity : Activity() {
         val pr = rectIn(page)
         if (!pr.contains(x, y)) return false
         val cell = page.cellAt((x - pr.left).toFloat(), (y - pr.top).toFloat())
-        return dropOn(item, HomeItem.DESKTOP, pager.getChildAdapterPosition(page), cell.first, cell.second)
+        return dropOn(item, HomeItem.DESKTOP, pageOf(pager.getChildAdapterPosition(page)), cell.first, cell.second)
     }
 
     private fun dropOn(item: HomeItem, container: Long, screen: Int, x: Int, y: Int): Boolean {
@@ -568,6 +835,7 @@ class MainActivity : Activity() {
             return true
         }
         val ok = model.dropAt(item, container, screen, x, y)
+        if (!ok) Toast.makeText(this, R.string.cannot_drop, Toast.LENGTH_SHORT).show()
         model.save(this)
         return ok
     }
@@ -575,15 +843,22 @@ class MainActivity : Activity() {
     private fun showItemDialog(item: HomeItem) {
         val labels = ArrayList<String>()
         val actions = ArrayList<() -> Unit>()
-        if (item.type == HomeItem.TYPE_APP) {
-            labels += getString(R.string.edit_icon)
-            actions += { comp(item.component)?.let { editIcon(it) } }
-        } else {
-            labels += getString(R.string.rename)
-            actions += { openFolder(item) }
+        when (item.type) {
+            HomeItem.TYPE_APP -> {
+                labels += getString(R.string.edit_icon)
+                actions += { comp(item.component)?.let { editIcon(it) } }
+            }
+            HomeItem.TYPE_FOLDER -> {
+                labels += getString(R.string.rename)
+                actions += { openFolder(item) }
+            }
+            else -> {
+                labels += getString(R.string.resize_widget)
+                actions += { showResizeDialog(item) }
+            }
         }
         labels += getString(R.string.remove)
-        actions += { model.remove(item); model.save(this); refreshHome() }
+        actions += { removeItem(item); model.save(this); refreshHome() }
         if (item.type == HomeItem.TYPE_APP) {
             labels += getString(R.string.app_info)
             actions += { comp(item.component)?.let { openAppInfo(it.packageName) } }
@@ -882,6 +1157,14 @@ class MainActivity : Activity() {
                     changed = true
                 } else if (apps.size > 5) {
                     changed = model.removeMissing(apps.map { it.component.flattenToString() }.toSet())
+                    // Widgets whose app was removed (or whose id no longer exists) disappear too.
+                    val broken = model.items.filter {
+                        it.type == HomeItem.TYPE_WIDGET && awm.getAppWidgetInfo(it.widgetId) == null
+                    }
+                    if (broken.isNotEmpty()) {
+                        broken.forEach { removeItem(it) }
+                        changed = true
+                    }
                 }
                 if (changed) model.save(this)
                 applyFilter()
@@ -1083,6 +1366,10 @@ class MainActivity : Activity() {
 
     companion object {
         private const val MAX_PAGES = 9
+        private const val LOOP_COUNT = 100000
+        private const val HOST_ID = 1024
         private const val REQ_IMAGE = 51
+        private const val REQ_WIDGET_BIND = 52
+        private const val REQ_WIDGET_CONFIG = 53
     }
 }
