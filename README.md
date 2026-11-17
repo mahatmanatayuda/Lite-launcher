@@ -8,11 +8,15 @@ bukan modifikasi Nova. Tanpa Compose dan AppCompat: hanya `core-ktx` dan `Recycl
   gestur, dan opsi tambahan, bisa langsung impor backup Nova atau backup Lite Launcher, lalu jadikan
   launcher utama. Bisa dijalankan lagi dari Pengaturan.
 - Beberapa halaman home (geser kiri/kanan), grid bisa diatur (3–8 kolom/baris)
+- **Loop halaman**: dari halaman terakhir geser lagi untuk kembali ke halaman pertama (opsional)
+- **Widget**: tahan area kosong di home → *Widget*. Tahan widget untuk memindahkan, lepas di tempat
+  semula untuk mengubah ukuran (lebih lebar / sempit / tinggi / pendek) atau menghapus
 - Dock dengan 3–7 ikon
 - Drag & drop: pindahkan ikon, taruh di atas ikon lain untuk membuat folder
 - Tarik ke tepi layar untuk pindah/menambah halaman
 - Bar aksi saat drag: Hapus, Info aplikasi, Copot
 - Lepas ikon di tempat semula untuk membuka menu (ubah ikon, hapus, info, copot)
+- **Geser ke atas pada ikon**: buka menu ikon atau info aplikasi (pilih di Pengaturan)
 - Folder: ganti nama, tarik keluar
 - App drawer: geser ke atas, pencarian, sembunyikan aplikasi
 - **Grup di app drawer**: kelompokkan aplikasi, tampil sebagai tab di atas daftar
@@ -27,14 +31,14 @@ bukan modifikasi Nova. Tanpa Compose dan AppCompat: hanya `core-ktx` dan `Recycl
 - **Titik notifikasi** pada ikon (perlu izin akses notifikasi)
 - **Kunci desktop**: ikon tidak bisa dipindah tanpa sengaja
 - **Backup & restore** tata letak dan semua pengaturan ke file JSON
-  (gambar ikon dari galeri tidak ikut tersimpan di backup)
+  (gambar ikon dari galeri dan widget tidak ikut tersimpan di backup)
 - **Impor backup Nova** (`.novabackup`): halaman, posisi ikon, folder, dan dock
 - Cache ikon dibatasi 8 MB
 
 ## Belum ada
-Widget, loop halaman tanpa ujung, aksi geser pada ikon, dan pengaturan Nova selain tata letak
-(preferensi di XML backup belum dibaca; ikon kustom Nova juga belum ikut terimpor).
-Bentuk ikon belum berlaku untuk ikon non-adaptive.
+Impor widget, ikon kustom, dan preferensi dari backup Nova (hanya tata letak ikon yang diimpor).
+Bentuk ikon belum berlaku untuk ikon non-adaptive. Ukuran widget diatur per kotak, belum bisa
+ditarik bebas.
 
 ## Rilis
 Setiap kali versi dinaikkan (`versionName` di `app/build.gradle.kts`) dan di-push ke `main`,
