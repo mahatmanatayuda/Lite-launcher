@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.Dialog
+import android.app.SearchManager
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.BroadcastReceiver
@@ -26,6 +27,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.DragEvent
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -77,6 +79,7 @@ class MainActivity : Activity() {
     private lateinit var search: EditText
     private lateinit var groupScroll: HorizontalScrollView
     private lateinit var groupBar: LinearLayout
+    private lateinit var emptyView: TextView
 
     private var allApps: List<AppInfo> = emptyList()
     private var customLabels: Map<String, String> = emptyMap()
@@ -195,6 +198,7 @@ class MainActivity : Activity() {
         grid.itemAnimator = null
         setupDrawer()
         setupGroupBar()
+        setupEmptyView()
 
         // Folder panel
         folderPanel.setOnClickListener { closeFolder() }
@@ -210,6 +214,16 @@ class MainActivity : Activity() {
         }
         registerReceiver(pkgReceiver, filter)
         reloadApps()
+        offerSetupOnce()
+    }
+
+    /** On the very first launch of a fresh install, open the setup guide once. */
+    private fun offerSetupOnce() {
+        val once = getSharedPreferences("lite_once", Context.MODE_PRIVATE)
+        if (once.getBoolean("setup_offered", false)) return
+        once.edit().putBoolean("setup_offered", true).apply()
+        // Someone who already has a home layout (an update, not a fresh install) skips the guide.
+        if (!HomeModel.exists(this)) startActivity(Intent(this, SetupActivity::class.java))
     }
 
     override fun onStart() {
@@ -405,6 +419,7 @@ class MainActivity : Activity() {
         val badge = v.findViewById<View>(R.id.badge)
         label.text = if (item.type == HomeItem.TYPE_APP) labelOf(item.component, item.title) else item.title
         label.visibility = if (labels) View.VISIBLE else View.GONE
+        v.contentDescription = label.text
         val hasDot = if (item.type == HomeItem.TYPE_APP) {
             NotifState.has(comp(item.component)?.packageName)
         } else {
@@ -885,6 +900,7 @@ class MainActivity : Activity() {
             comp(child.component)?.let { bindIcon(icon, it, size, icons) }
             val label = v.findViewById<TextView>(R.id.label)
             label.text = labelOf(child.component, child.title)
+            v.contentDescription = label.text
             val badge = v.findViewById<View>(R.id.badge)
             badge.visibility =
                 if (prefs.notifBadges && NotifState.has(comp(child.component)?.packageName)) View.VISIBLE else View.GONE
@@ -948,7 +964,9 @@ class MainActivity : Activity() {
         })
         search.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_DONE) {
-                drawerAdapter.first()?.let(::launch)
+                val first = drawerAdapter.first()
+                val q = search.text.toString().trim()
+                if (first != null) launch(first) else if (q.isNotEmpty()) webSearch(q)
                 true
             } else false
         }
@@ -961,6 +979,39 @@ class MainActivity : Activity() {
             }
         })
         findViewById<View>(R.id.handle).setOnTouchListener { _, ev -> handleDetector.onTouchEvent(ev); true }
+    }
+
+    /** Shown under the search box when nothing matches: offers a web search for what was typed. */
+    private fun setupEmptyView() {
+        emptyView = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(24), dp(16), dp(24))
+            visibility = View.GONE
+        }
+        // Drawer children are: handle, search, group chips, grid.
+        (drawer as LinearLayout).addView(
+            emptyView, 3,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        )
+    }
+
+    private fun webSearch(q: String) {
+        try {
+            startActivity(
+                Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, q)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            closeDrawer()
+        } catch (e: Exception) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(q))))
+                closeDrawer()
+            } catch (e2: Exception) {
+                Toast.makeText(this, R.string.cannot_open, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun openDrawer() {
@@ -1184,6 +1235,22 @@ class MainActivity : Activity() {
             .filter { q.isEmpty() || it.label.lowercase().contains(q) }
             .sortedBy { it.label.lowercase() }
         drawerAdapter.submit(list)
+
+        // Nothing to show: offer a web search for what was typed, or just say so.
+        if (list.isEmpty() && allApps.isNotEmpty()) {
+            val raw = search.text.toString().trim()
+            if (raw.isNotEmpty()) {
+                emptyView.text = getString(R.string.web_search_for, raw)
+                emptyView.setOnClickListener { webSearch(raw) }
+            } else {
+                emptyView.text = getString(R.string.no_results)
+                emptyView.setOnClickListener(null)
+                emptyView.isClickable = false
+            }
+            emptyView.visibility = View.VISIBLE
+        } else {
+            emptyView.visibility = View.GONE
+        }
     }
 
     private fun launch(app: AppInfo) = launchComponent(app.component.flattenToString())
