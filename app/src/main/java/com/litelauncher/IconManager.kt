@@ -30,6 +30,9 @@ class CustomIconDrawable(res: Resources, val bmp: Bitmap) : BitmapDrawable(res, 
  * active icon pack, system icon. Bitmap cache is capped at 8 MB.
  */
 class IconManager(ctx: Context) {
+    /** A drawable plus whether it is the app's own (system-provided) icon. */
+    private class Resolved(val drawable: Drawable, val fromSystem: Boolean)
+
     private val appCtx = ctx.applicationContext
     private val pm = appCtx.packageManager
     private val prefs = Prefs(ctx)
@@ -91,8 +94,8 @@ class IconManager(ctx: Context) {
         cache.get(key)?.let { cb(it); return }
         val ver = version
         executor.execute {
-            val d = resolve(component, comp) ?: return@execute
-            val bmp = render(d, sizePx)
+            val r = resolve(component, comp) ?: return@execute
+            val bmp = render(r.drawable, sizePx, r.fromSystem)
             if (ver == version) cache.put(key, bmp)
             main.post { cb(bmp) }
         }
@@ -105,40 +108,44 @@ class IconManager(ctx: Context) {
             val p = packFor(pkg)
             p.load(pm)
             val d = p.drawable(name) ?: return@execute
-            val bmp = render(d, sizePx)
+            val bmp = render(d, sizePx, false)
             cache.put(key, bmp)
             main.post { cb(bmp) }
         }
     }
 
-    private fun resolve(component: ComponentName, comp: String): Drawable? {
+    private fun resolve(component: ComponentName, comp: String): Resolved? {
         overrides[comp]?.let { v ->
             if (v.startsWith("file|")) {
                 val f = File(appCtx.filesDir, "icons/" + v.substring(5))
                 if (f.exists()) {
-                    BitmapFactory.decodeFile(f.path)?.let { return CustomIconDrawable(appCtx.resources, it) }
+                    BitmapFactory.decodeFile(f.path)?.let { return Resolved(CustomIconDrawable(appCtx.resources, it), false) }
                 }
             } else {
                 val i = v.indexOf('|')
                 if (i > 0) {
                     val p = packFor(v.substring(0, i))
                     p.load(pm)
-                    p.drawable(v.substring(i + 1))?.let { return it }
+                    p.drawable(v.substring(i + 1))?.let { return Resolved(it, false) }
                 }
             }
         }
         activePack?.let { p ->
             p.load(pm)
-            p.drawableNameFor(component)?.let { n -> p.drawable(n)?.let { return it } }
+            p.drawableNameFor(component)?.let { n -> p.drawable(n)?.let { return Resolved(it, false) } }
         }
-        return try { pm.getActivityIcon(component) } catch (e: Exception) { null }
+        return try { Resolved(pm.getActivityIcon(component), true) } catch (e: Exception) { null }
     }
 
-    private fun render(d: Drawable, size: Int): Bitmap {
+    private fun render(d: Drawable, size: Int, fromSystem: Boolean): Bitmap {
         val shape = prefs.iconShape
         if (d is CustomIconDrawable) return renderCustom(d, size, if (shape == "system") "rounded" else shape)
-        if (shape != "system" && d is AdaptiveIconDrawable) {
-            renderShaped(d, size, shape)?.let { return it }
+        if (shape != "system") {
+            if (d is AdaptiveIconDrawable) {
+                renderShaped(d, size, shape)?.let { return it }
+            } else if (fromSystem) {
+                return renderLegacy(d, size, shape)
+            }
         }
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         d.setBounds(0, 0, size, size)
@@ -162,6 +169,21 @@ class IconManager(ctx: Context) {
         c.drawRoundRect(rect, r, r, paint)
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
         c.drawBitmap(d.bmp, null, rect, paint)
+        return out
+    }
+
+    /** An older (non-adaptive) icon: sit it on a light base in the chosen shape so every icon matches. */
+    private fun renderLegacy(d: Drawable, size: Int, shape: String): Bitmap {
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.color = 0xFFF2F2F2.toInt()
+        val r = radiusFor(shape, size)
+        c.drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), r, r, paint)
+        // Inset keeps the whole icon inside even the circle shape.
+        val inset = (size * 0.16f).toInt()
+        d.setBounds(inset, inset, size - inset, size - inset)
+        d.draw(c)
         return out
     }
 
