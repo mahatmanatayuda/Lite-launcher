@@ -219,10 +219,18 @@ class HomeModel {
         return JSONObject().put("pages", pages).put("next", nextId).put("items", arr).toString()
     }
 
+    /** Write the layout atomically, keeping the previous version as a backup copy. */
     fun save(ctx: Context) {
         val f = file(ctx)
         val tmp = File(f.path + ".tmp")
         tmp.writeText(toJson())
+        if (f.exists()) {
+            try {
+                f.copyTo(File(f.path + ".bak"), overwrite = true)
+            } catch (e: Exception) {
+                // The backup is best effort; saving the layout matters more.
+            }
+        }
         tmp.renameTo(f)
     }
 
@@ -230,10 +238,21 @@ class HomeModel {
         fun file(ctx: Context) = File(ctx.filesDir, "home.json")
         fun exists(ctx: Context) = file(ctx).exists()
 
+        /**
+         * Load the layout. A missing file means an empty home screen; a corrupt file falls back to
+         * the backup copy instead of silently wiping the layout.
+         */
         fun load(ctx: Context): HomeModel {
-            val m = HomeModel()
-            try {
-                val o = JSONObject(file(ctx).readText())
+            val f = file(ctx)
+            if (!f.exists()) return HomeModel()
+            return parse(f) ?: parse(File(f.path + ".bak")) ?: HomeModel()
+        }
+
+        private fun parse(f: File): HomeModel? {
+            if (!f.exists()) return null
+            return try {
+                val m = HomeModel()
+                val o = JSONObject(f.readText())
                 m.pages = o.optInt("pages", 1)
                 m.nextId = o.optLong("next", 1)
                 val a = o.getJSONArray("items")
@@ -247,10 +266,10 @@ class HomeModel {
                         )
                     )
                 }
+                m
             } catch (e: Exception) {
-                // missing or corrupt file: start empty
+                null
             }
-            return m
         }
     }
 }
