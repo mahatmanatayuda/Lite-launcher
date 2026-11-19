@@ -11,8 +11,8 @@ android {
         applicationId = "com.litelauncher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.5"
+        versionCode = 8
+        versionName = "2.6"
     }
 
     // Optional stable release key. CI fills these from repository secrets; without them
