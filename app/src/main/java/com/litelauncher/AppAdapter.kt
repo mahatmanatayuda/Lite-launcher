@@ -41,6 +41,8 @@ class AppAdapter(
         val label = v.findViewById<TextView>(R.id.label)
         label.text = app.label
         label.visibility = if (showLabels) View.VISIBLE else View.GONE
+        // Screen readers still need the name when the visible label is turned off.
+        v.contentDescription = app.label
         v.findViewById<View>(R.id.badge).visibility =
             if (showBadges && NotifState.has(app.packageName)) View.VISIBLE else View.GONE
         bindIcon(icon, app.component, iconSizePx, icons)
