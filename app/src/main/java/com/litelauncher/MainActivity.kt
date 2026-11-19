@@ -35,6 +35,7 @@ import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -49,6 +50,9 @@ import androidx.recyclerview.widget.RecyclerView
 import java.io.File
 import java.util.concurrent.Executors
 import kotlin.math.abs
+
+/** An app being dragged out of the drawer onto the home screen. */
+private class DragApp(val app: AppInfo)
 
 class MainActivity : Activity() {
 
@@ -88,6 +92,8 @@ class MainActivity : Activity() {
     private var pendingIcon: ComponentName? = null
     private var pendingWidgetId = -1
     private var pendingProvider: AppWidgetProviderInfo? = null
+    private var resizeOverlay: WidgetResizeView? = null
+    private var drawerMenu: PopupMenu? = null
     private var drawerOpen = false
     private var dragging = false
     private var lastLoop = false
@@ -192,7 +198,7 @@ class MainActivity : Activity() {
         setupHomeGestures()
 
         // Drawer
-        drawerAdapter = AppAdapter(icons, ::launch, ::showDrawerMenu)
+        drawerAdapter = AppAdapter(icons, ::launch, ::showDrawerMenu, ::startAppDrag)
         grid.layoutManager = GridLayoutManager(this, prefs.drawerCols)
         grid.adapter = drawerAdapter
         grid.itemAnimator = null
@@ -279,6 +285,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
+            resizeOverlay?.commit()
             closeFolder()
             closeDrawer()
             scrollToPage(0, true)
@@ -288,6 +295,7 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         when {
+            resizeOverlay != null -> resizeOverlay?.commit()
             openFolderId != null -> closeFolder()
             drawerOpen -> closeDrawer()
         }
@@ -717,27 +725,38 @@ class MainActivity : Activity() {
         model.remove(item)
     }
 
-    private fun showResizeDialog(item: HomeItem) {
-        val options = listOf(
-            R.string.widget_wider to (1 to 0),
-            R.string.widget_narrower to (-1 to 0),
-            R.string.widget_taller to (0 to 1),
-            R.string.widget_shorter to (0 to -1),
+    /** Show drag handles over a widget so it can be resized in whole cells. */
+    private fun startResize(item: HomeItem) {
+        if (resizeOverlay != null) return
+        val page = snap.findSnapView(pager.layoutManager!!) as? CellLayout ?: return
+        val pr = rectIn(page)
+        val cw = pr.width().toFloat() / model.cols
+        val ch = pr.height().toFloat() / model.rows
+        val overlay = WidgetResizeView(
+            this,
+            pr.left + item.x * cw,
+            pr.top + item.y * ch,
+            cw,
+            ch,
+            item.spanX,
+            item.spanY,
+            { sx, sy -> model.fits(item, item.screen, item.x, item.y, sx, sy) },
+            { sx, sy -> finishResize(item, sx, sy) },
         )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.resize_widget)
-            .setItems(options.map { getString(it.first) }.toTypedArray()) { _, i ->
-                val d = options[i].second
-                val nx = item.spanX + d.first
-                val ny = item.spanY + d.second
-                if (nx >= 1 && ny >= 1 && model.resize(item, nx, ny)) {
-                    model.save(this)
-                    refreshHome()
-                } else {
-                    Toast.makeText(this, R.string.widget_cannot_resize, Toast.LENGTH_SHORT).show()
-                }
-            }
-            .show()
+        (root as FrameLayout).addView(
+            overlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        resizeOverlay = overlay
+        Toast.makeText(this, R.string.widget_resize_hint, Toast.LENGTH_LONG).show()
+    }
+
+    private fun finishResize(item: HomeItem, sx: Int, sy: Int) {
+        resizeOverlay?.let { (root as FrameLayout).removeView(it) }
+        resizeOverlay = null
+        if ((sx != item.spanX || sy != item.spanY) && model.resize(item, sx, sy)) {
+            model.save(this)
+            refreshHome()
+        }
     }
 
     // ---------- Drag and drop ----------
@@ -754,6 +773,19 @@ class MainActivity : Activity() {
         v.startDragAndDrop(ClipData.newPlainText("item", item.id.toString()), View.DragShadowBuilder(v), item.id, 0)
     }
 
+    /** Drag an app out of the drawer: the drawer closes and the icon can be dropped on the home screen. */
+    private fun startAppDrag(v: View, app: AppInfo) {
+        if (prefs.lockDesktop) {
+            Toast.makeText(this, R.string.desktop_locked, Toast.LENGTH_SHORT).show()
+            return
+        }
+        drawerMenu?.dismiss()
+        v.startDragAndDrop(
+            ClipData.newPlainText("app", app.component.flattenToString()),
+            View.DragShadowBuilder(v), DragApp(app), 0
+        )
+    }
+
     private fun rectIn(v: View): Rect {
         val a = IntArray(2)
         val b = IntArray(2)
@@ -763,12 +795,16 @@ class MainActivity : Activity() {
     }
 
     private fun onDrag(e: DragEvent): Boolean {
-        val itemId = e.localState as? Long ?: return false
+        val payload = e.localState
+        val itemId = payload as? Long
+        val dragApp = payload as? DragApp
+        if (itemId == null && dragApp == null) return false
         when (e.action) {
             DragEvent.ACTION_DRAG_STARTED -> {
                 dragging = true
                 pagesBeforeDrag = model.pages
                 closeFolder(refresh = false)
+                if (dragApp != null) closeDrawer()
                 actionBar.visibility = View.VISIBLE
                 return true
             }
@@ -786,7 +822,13 @@ class MainActivity : Activity() {
                 highlightZone(e.x.toInt(), e.y.toInt())
                 return true
             }
-            DragEvent.ACTION_DROP -> return handleDrop(itemId, e.x.toInt(), e.y.toInt())
+            DragEvent.ACTION_DROP -> {
+                return if (itemId != null) {
+                    handleDrop(itemId, e.x.toInt(), e.y.toInt())
+                } else {
+                    handleDropApp(dragApp!!, e.x.toInt(), e.y.toInt())
+                }
+            }
             DragEvent.ACTION_DRAG_ENDED -> {
                 dragging = false
                 pager.removeCallbacks(edgeRun)
@@ -816,6 +858,20 @@ class MainActivity : Activity() {
         for (z in listOf(actRemove, actInfo, actUninstall)) z.setBackgroundColor(0)
     }
 
+    /** Where a point lands on the home screen: (container, page, cell), or null if it is not over a grid. */
+    private fun locateCell(x: Int, y: Int): Triple<Long, Int, Pair<Int, Int>>? {
+        val hr = rectIn(hotseat)
+        if (hr.contains(x, y)) {
+            val cell = hotseat.cellAt((x - hr.left).toFloat(), (y - hr.top).toFloat())
+            return Triple(HomeItem.HOTSEAT, 0, cell.first to 0)
+        }
+        val page = snap.findSnapView(pager.layoutManager!!) as? CellLayout ?: return null
+        val pr = rectIn(page)
+        if (!pr.contains(x, y)) return null
+        val cell = page.cellAt((x - pr.left).toFloat(), (y - pr.top).toFloat())
+        return Triple(HomeItem.DESKTOP, pageOf(pager.getChildAdapterPosition(page)), cell)
+    }
+
     private fun handleDrop(itemId: Long, x: Int, y: Int): Boolean {
         val item = model.find(itemId) ?: return false
 
@@ -829,17 +885,33 @@ class MainActivity : Activity() {
             return true
         }
 
-        val hr = rectIn(hotseat)
-        if (hr.contains(x, y)) {
-            val cell = hotseat.cellAt((x - hr.left).toFloat(), (y - hr.top).toFloat())
-            return dropOn(item, HomeItem.HOTSEAT, 0, cell.first, 0)
+        val loc = locateCell(x, y) ?: return false
+        return dropOn(item, loc.first, loc.second, loc.third.first, loc.third.second)
+    }
+
+    /** An app dragged from the drawer was dropped: add it to the home screen at that spot. */
+    private fun handleDropApp(d: DragApp, x: Int, y: Int): Boolean {
+        if (actionBar.visibility == View.VISIBLE && y <= rectIn(actionBar).bottom) {
+            when {
+                rectIn(actInfo).contains(x, y) -> openAppInfo(d.app.packageName)
+                rectIn(actUninstall).contains(x, y) -> uninstall(d.app.packageName)
+            }
+            return true
         }
 
-        val page = snap.findSnapView(pager.layoutManager!!) as? CellLayout ?: return false
-        val pr = rectIn(page)
-        if (!pr.contains(x, y)) return false
-        val cell = page.cellAt((x - pr.left).toFloat(), (y - pr.top).toFloat())
-        return dropOn(item, HomeItem.DESKTOP, pageOf(pager.getChildAdapterPosition(page)), cell.first, cell.second)
+        val loc = locateCell(x, y) ?: return false
+        // Detached for now (container 0): it joins the layout only if the drop works.
+        val item = HomeItem(
+            model.nextId(), HomeItem.TYPE_APP, 0L, 0, 0, 0, d.app.label, d.app.component.flattenToString()
+        )
+        model.items.add(item)
+        val ok = model.dropAt(item, loc.first, loc.second, loc.third.first, loc.third.second)
+        if (!ok) {
+            model.items.remove(item)
+            Toast.makeText(this, R.string.cannot_drop, Toast.LENGTH_SHORT).show()
+        }
+        model.save(this)
+        return ok
     }
 
     private fun dropOn(item: HomeItem, container: Long, screen: Int, x: Int, y: Int): Boolean {
@@ -869,7 +941,7 @@ class MainActivity : Activity() {
             }
             else -> {
                 labels += getString(R.string.resize_widget)
-                actions += { showResizeDialog(item) }
+                actions += { startResize(item) }
             }
         }
         labels += getString(R.string.remove)
@@ -1044,6 +1116,8 @@ class MainActivity : Activity() {
 
     private fun showDrawerMenu(anchor: View, app: AppInfo) {
         val menu = PopupMenu(this, anchor)
+        drawerMenu = menu
+        menu.setOnDismissListener { if (drawerMenu === menu) drawerMenu = null }
         menu.menu.add(0, 1, 0, R.string.add_to_home)
         menu.menu.add(0, 2, 1, R.string.edit_icon)
         menu.menu.add(0, 6, 2, R.string.add_to_group)
