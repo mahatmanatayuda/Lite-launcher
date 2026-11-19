@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_resize_hint">Drag the round handles to resize. Tap anywhere else to finish.</string>
+</resources>
